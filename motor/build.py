@@ -41,21 +41,23 @@ def descargar_excel(url, destino):
         "Connection": "close",  # evita que LiteSpeed cuelgue el keep-alive
     }
     ultimo_error = None
-    for intento in range(1, 5):
+    for intento in range(1, 7):  # hasta 6 intentos
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=60) as r, open(destino, "wb") as f:
+            with urllib.request.urlopen(req, timeout=90) as r, open(destino, "wb") as f:
                 f.write(r.read())
             tam = os.path.getsize(destino)
             if tam < 5000:
                 raise ValueError(f"Archivo demasiado chico ({tam} bytes), posible error.")
             print(f"  Excel guardado ({tam//1024} KB)")
-            return
+            return True
         except Exception as e:
             ultimo_error = e
-            print(f"  Intento {intento} falló: {e}. Reintentando en 5s …")
-            time.sleep(5)
-    raise RuntimeError(f"No se pudo descargar el Excel tras varios intentos: {ultimo_error}")
+            espera = 8 * intento  # espera creciente: 8, 16, 24…
+            print(f"  Intento {intento} falló: {e}. Reintentando en {espera}s …")
+            time.sleep(espera)
+    print(f"  No se pudo descargar el Excel: {ultimo_error}")
+    return False
 
 def main():
     ap = argparse.ArgumentParser()
@@ -63,6 +65,7 @@ def main():
     args = ap.parse_args()
 
     excel_local = os.path.join(RAIZ, "_listado.xlsx")
+    respaldo = os.path.join(RAIZ, ".listado_ultimo_ok.xlsx")
     if args.excel:
         shutil.copy(args.excel, excel_local)
     else:
@@ -70,7 +73,16 @@ def main():
         if not url:
             print("ERROR: falta EXCEL_URL (o pasá --excel).", file=sys.stderr)
             sys.exit(1)
-        descargar_excel(url, excel_local)
+        if descargar_excel(url, excel_local):
+            # descarga OK: guardar copia como respaldo para futuras corridas
+            shutil.copy(excel_local, respaldo)
+        elif os.path.exists(respaldo):
+            # Hostinger no respondió: usar el último Excel que bajó bien.
+            print("  Usando el último Excel descargado con éxito (respaldo).")
+            shutil.copy(respaldo, excel_local)
+        else:
+            print("ERROR: no se pudo descargar el Excel y no hay respaldo previo.", file=sys.stderr)
+            sys.exit(1)
 
     print("Leyendo y limpiando libros …")
     libros = leer_excel(excel_local)
