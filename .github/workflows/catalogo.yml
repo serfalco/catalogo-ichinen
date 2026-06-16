@@ -41,18 +41,28 @@ jobs:
         run: |
           URL="${{ vars.EXCEL_URL }}"
           if [ -z "$URL" ]; then echo "Falta la variable EXCEL_URL"; exit 1; fi
-          # Pedir solo los headers para leer tamaño y fecha (sin bajar el archivo entero)
-          HEADERS=$(curl -sIL "$URL")
+          # Hostinger (LiteSpeed) puede colgar el HEAD por negociación HTTP/2-3.
+          # Forzamos HTTP/1.1, mandamos User-Agent de navegador y reintentamos.
+          HEADERS=$(curl -sIL --http1.1 \
+            -A "Mozilla/5.0 (compatible; IchinenBuild/1.0)" \
+            --connect-timeout 20 --max-time 45 --retry 3 --retry-delay 5 \
+            "$URL" || true)
           HUELLA=$(echo "$HEADERS" | grep -iE "last-modified:|content-length:" | tr -d '\r' | sort | md5sum | cut -d' ' -f1)
-          echo "actual=$HUELLA" >> "$GITHUB_OUTPUT"
-          ANTERIOR=""
-          if [ -f .huella_excel ]; then ANTERIOR=$(cat .huella_excel); fi
-          echo "anterior=$ANTERIOR" >> "$GITHUB_OUTPUT"
-          if [ "$HUELLA" = "$ANTERIOR" ] && [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "cambio=no" >> "$GITHUB_OUTPUT"
-            echo "El Excel no cambió. No hace falta reconstruir."
-          else
+          # Si el HEAD no devolvió nada útil, no abortamos: reconstruimos igual.
+          if [ -z "$HEADERS" ] || [ -z "$(echo "$HEADERS" | grep -iE "last-modified:|content-length:")" ]; then
+            echo "No se pudo leer la huella; se reconstruye por las dudas."
+            echo "actual=forzar-$(date +%s)" >> "$GITHUB_OUTPUT"
             echo "cambio=si" >> "$GITHUB_OUTPUT"
+          else
+            echo "actual=$HUELLA" >> "$GITHUB_OUTPUT"
+            ANTERIOR=""
+            if [ -f .huella_excel ]; then ANTERIOR=$(cat .huella_excel); fi
+            if [ "$HUELLA" = "$ANTERIOR" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+              echo "cambio=no" >> "$GITHUB_OUTPUT"
+              echo "El Excel no cambió. No hace falta reconstruir."
+            else
+              echo "cambio=si" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Construir el catálogo
