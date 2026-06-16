@@ -1,1 +1,5 @@
-
+# Temporales del build (no se versionan)
+_listado.xlsx
+_tapas_cache/
+__pycache__/
+*.pyc
