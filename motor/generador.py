@@ -28,6 +28,47 @@ def wa_link(titulo, autor):
     return f"https://wa.me/{WA_NUMERO}?text={quote(msg)}"
 
 # ---------------------------------------------------------------------------
+# Placeholders por categoría: cada una con color de la paleta Ichinén y un
+# ornamento tipográfico. Se generan como SVG (peso casi nulo, nítidos siempre).
+# (fondo, texto, ornamento)
+ESTILO_CATEGORIA = {
+    "Literatura":         ("#f3e7e7", "#7a0c10", "\u2726"),  # ✦
+    "Poesía":             ("#e7edf6", "#1b4078", "\u2767"),  # ❧
+    "Teatro":             ("#faf3df", "#8a6a12", "\u2058"),  # ⁘
+    "Ensayo y Filosofía": ("#eae6dd", "#4a463b", "\u2756"),  # ❖
+    "Arte":               ("#f3e7e7", "#7a0c10", "\u25c8"),  # ◈
+    "Referencia":         ("#e7edf6", "#1b4078", "\u203b"),  # ※
+    "Otros":              ("#efe9d9", "#5b5648", "\u2766"),  # ❦
+}
+DEFAULT_ESTILO = ("#efe9d9", "#5b5648", "\u2766")
+
+def _slug_cat(categoria):
+    from limpieza import slugify
+    return slugify(categoria)
+
+def placeholder_svg(categoria):
+    """SVG de tapa para una categoría, con su color y ornamento."""
+    fondo, color, orn = ESTILO_CATEGORIA.get(categoria, DEFAULT_ESTILO)
+    nombre = esc(categoria.upper())
+    # dividir nombre largo en dos líneas
+    if len(categoria) > 12 and " " in categoria:
+        partes = categoria.upper().split(" ")
+        mitad = len(partes) // 2 + len(partes) % 2
+        l1 = esc(" ".join(partes[:mitad]))
+        l2 = esc(" ".join(partes[mitad:]))
+        texto = f'<text x="100" y="205" text-anchor="middle" font-family="Cinzel,serif" font-size="15" letter-spacing="2" fill="{color}">{l1}</text><text x="100" y="228" text-anchor="middle" font-family="Cinzel,serif" font-size="15" letter-spacing="2" fill="{color}">{l2}</text>'
+    else:
+        texto = f'<text x="100" y="215" text-anchor="middle" font-family="Cinzel,serif" font-size="16" letter-spacing="2" fill="{color}">{nombre}</text>'
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" preserveAspectRatio="xMidYMid slice">
+<rect width="200" height="300" fill="{fondo}"/>
+<rect x="0" y="0" width="66.66" height="4" fill="#2459A8"/>
+<rect x="66.66" y="0" width="66.66" height="4" fill="#E0B52B"/>
+<rect x="133.32" y="0" width="66.68" height="4" fill="#B31217"/>
+<text x="100" y="150" text-anchor="middle" font-family="Cinzel,serif" font-size="40" fill="{color}" opacity="0.55">{orn}</text>
+{texto}
+</svg>'''
+
+# ---------------------------------------------------------------------------
 CSS = """
 :root{
   --bordo:#B31217;--bordo-osc:#7a0c10;--azul:#2459A8;--amarillo:#E0B52B;
@@ -164,7 +205,7 @@ _FOOTER = f"""
 def _cover_html(libro):
     if libro.get("tapa_url"):
         return f'<div class="cover"><div class="tc"></div><img src="{esc(libro["tapa_url"])}" alt="Tapa de {esc(libro["titulo"])}" loading="lazy"></div>'
-    return '<div class="cover"><div class="tc"></div><div class="ph">SIN<br>TAPA</div></div>'
+    return f'<div class="cover"><img src="/ph/{_slug_cat(libro["categoria"])}.svg" alt="{esc(libro["categoria"])}"></div>'
 
 def generar_pagina_libro(libro):
     titulo_seo = f'{libro["titulo"]} — {libro["autor"]} | Librería Ichinén'
@@ -258,7 +299,7 @@ const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/
 function tarjeta(l){
   const cover=l.tapa_url
     ?`<div class="cover"><div class="tc"></div><img src="${l.tapa_url}" alt="Tapa de ${l.t}" loading="lazy"></div>`
-    :`<div class="cover"><div class="tc"></div><div class="ph">SIN<br>TAPA</div></div>`;
+    :`<div class="cover"><img src="/ph/${l.cs}.svg" alt="${l.c}" loading="lazy"></div>`;
   const meta=[l.ed,l.an].filter(Boolean).join(' · ');
   const verif=l.v?`<span class="verif">A verificar</span>`:'';
   const au=l.ok?l.a:'Autor a verificar';
@@ -301,9 +342,14 @@ def generar_sitio(libros, salida):
     os.makedirs(os.path.join(salida, "libro"))
     os.makedirs(os.path.join(salida, "css"))
     os.makedirs(os.path.join(salida, "js"))
+    os.makedirs(os.path.join(salida, "ph"))
 
     categorias = sorted({l["categoria"] for l in libros},
                         key=lambda c: (c == "Otros", c))  # Otros al final
+
+    # un SVG de placeholder por categoría presente
+    for c in categorias:
+        open(os.path.join(salida, "ph", f"{_slug_cat(c)}.svg"), "w").write(placeholder_svg(c))
 
     # css y js
     open(os.path.join(salida, "css", "catalogo.css"), "w").write(CSS)
@@ -314,7 +360,7 @@ def generar_sitio(libros, salida):
         "t": l["titulo"], "a": l["autor"], "ok": l["autor_ok"],
         "ed": l["editorial"], "an": l["anio"], "c": l["categoria"],
         "s": l["slug"], "v": bool([f for f in l["faltantes"] if f != "autor"]),
-        "tapa_url": l.get("tapa_url", ""),
+        "tapa_url": l.get("tapa_url", ""), "cs": _slug_cat(l["categoria"]),
         "wa": wa_link(l["titulo"], l["autor"]),
     } for l in libros]
     json.dump(datos, open(os.path.join(salida, "datos.json"), "w"), ensure_ascii=False, separators=(",", ":"))
