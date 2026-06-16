@@ -13,7 +13,7 @@ Variables de entorno:
   BUSCAR_TAPAS   "1" para activar búsqueda de tapas, "0" para placeholder en todos.
   LIMITE_TAPAS   (opcional) máximo de búsquedas nuevas por corrida, para no demorar de más.
 """
-import os, sys, argparse, urllib.request, shutil
+import os, sys, argparse, urllib.request, shutil, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lector import leer_excel
@@ -27,10 +27,27 @@ REGISTRO_FALLIDOS = os.path.join(RAIZ, ".tapas_fallidas.json")
 
 def descargar_excel(url, destino):
     print(f"Descargando Excel desde {url} …")
-    req = urllib.request.Request(url, headers={"User-Agent": "IchinenBuild/1.0"})
-    with urllib.request.urlopen(req, timeout=30) as r, open(destino, "wb") as f:
-        f.write(r.read())
-    print(f"  Excel guardado ({os.path.getsize(destino)//1024} KB)")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; IchinenBuild/1.0)",
+        "Accept": "*/*",
+        "Connection": "close",  # evita que LiteSpeed cuelgue el keep-alive
+    }
+    ultimo_error = None
+    for intento in range(1, 5):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as r, open(destino, "wb") as f:
+                f.write(r.read())
+            tam = os.path.getsize(destino)
+            if tam < 5000:
+                raise ValueError(f"Archivo demasiado chico ({tam} bytes), posible error.")
+            print(f"  Excel guardado ({tam//1024} KB)")
+            return
+        except Exception as e:
+            ultimo_error = e
+            print(f"  Intento {intento} falló: {e}. Reintentando en 5s …")
+            time.sleep(5)
+    raise RuntimeError(f"No se pudo descargar el Excel tras varios intentos: {ultimo_error}")
 
 def main():
     ap = argparse.ArgumentParser()
