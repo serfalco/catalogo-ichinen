@@ -184,7 +184,7 @@ def _head(titulo, descripcion, canonical, extra=""):
 </head>
 <body>
 <header class="topbar"><div class="wrap">
-  <a class="brand" href="/">LIBRERÍA ICHINÉN</a>
+  <a class="brand" href="{SITIO_HOME}">LIBRERÍA ICHINÉN</a>
   <nav>
     <a href="{SITIO_HOME}">Inicio</a>
     <a href="/">Catálogo</a>
