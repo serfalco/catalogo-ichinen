@@ -65,7 +65,7 @@ def main():
     args = ap.parse_args()
 
     excel_local = os.path.join(RAIZ, "_listado.xlsx")
-    respaldo = os.path.join(RAIZ, ".listado_ultimo_ok.xlsx")
+    respaldo = os.path.join(RAIZ, "listado_ultimo_ok.xlsx")
     if args.excel:
         shutil.copy(args.excel, excel_local)
     else:
