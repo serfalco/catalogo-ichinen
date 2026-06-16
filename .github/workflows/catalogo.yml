@@ -85,5 +85,15 @@ jobs:
             echo "Sin cambios para publicar."
           else
             git commit -m "Actualizar catálogo $(date +%Y-%m-%d)"
-            git push
+            # Sincronizar con el remoto por si hubo otros commits mientras corría,
+            # y reintentar el push ante choques de concurrencia.
+            for intento in 1 2 3; do
+              git pull --rebase --autostash origin main || true
+              if git push origin main; then
+                echo "Publicado."
+                break
+              fi
+              echo "Push rechazado, reintento $intento …"
+              sleep 5
+            done
           fi
