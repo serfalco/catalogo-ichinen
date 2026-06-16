@@ -1,1 +1,79 @@
+name: Actualizar catálogo
 
+# Cuándo corre:
+#  - Una vez por semana (lunes 09:00 UTC = 06:00 Argentina aprox.)
+#  - Cuando se aprieta el botón "Run workflow" en la pestaña Actions
+#  - Cuando se modifica el motor o el propio workflow
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+  push:
+    paths:
+      - "motor/**"
+      - ".github/workflows/catalogo.yml"
+
+# Permite que el workflow escriba en el repo (commitear el sitio generado)
+permissions:
+  contents: write
+
+concurrency:
+  group: catalogo
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bajar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install pandas openpyxl unidecode
+
+      - name: Ver si el Excel cambió desde la última vez
+        id: huella
+        run: |
+          URL="${{ vars.EXCEL_URL }}"
+          if [ -z "$URL" ]; then echo "Falta la variable EXCEL_URL"; exit 1; fi
+          # Pedir solo los headers para leer tamaño y fecha (sin bajar el archivo entero)
+          HEADERS=$(curl -sIL "$URL")
+          HUELLA=$(echo "$HEADERS" | grep -iE "last-modified:|content-length:" | tr -d '\r' | sort | md5sum | cut -d' ' -f1)
+          echo "actual=$HUELLA" >> "$GITHUB_OUTPUT"
+          ANTERIOR=""
+          if [ -f .huella_excel ]; then ANTERIOR=$(cat .huella_excel); fi
+          echo "anterior=$ANTERIOR" >> "$GITHUB_OUTPUT"
+          if [ "$HUELLA" = "$ANTERIOR" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "cambio=no" >> "$GITHUB_OUTPUT"
+            echo "El Excel no cambió. No hace falta reconstruir."
+          else
+            echo "cambio=si" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construir el catálogo
+        if: steps.huella.outputs.cambio == 'si'
+        env:
+          EXCEL_URL: ${{ vars.EXCEL_URL }}
+          BUSCAR_TAPAS: "1"
+          LIMITE_TAPAS: "800"
+        run: |
+          python motor/build.py
+          echo "${{ steps.huella.outputs.actual }}" > .huella_excel
+
+      - name: Publicar cambios
+        if: steps.huella.outputs.cambio == 'si'
+        run: |
+          git config user.name "Catálogo Ichinén (bot)"
+          git config user.email "actions@github.com"
+          git add docs .huella_excel .tapas_fallidas.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Sin cambios para publicar."
+          else
+            git commit -m "Actualizar catálogo $(date +%Y-%m-%d)"
+            git push
+          fi
