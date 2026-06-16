@@ -383,6 +383,9 @@ def generar_sitio(libros, salida):
     # robots y CNAME
     open(os.path.join(salida, "robots.txt"), "w").write(f"User-agent: *\nAllow: /\n\nSitemap: {DOMINIO}/sitemap.xml\n")
     open(os.path.join(salida, "CNAME"), "w").write("catalogo.ichinen.com.ar\n")
+    # Evita que GitHub Pages procese el sitio con Jekyll (es HTML puro).
+    # Sin esto, Jekyll puede excluir el CNAME y archivos con guion bajo/punto.
+    open(os.path.join(salida, ".nojekyll"), "w").write("")
 
     return categorias
 
