@@ -14,6 +14,14 @@ Variables de entorno:
   LIMITE_TAPAS   (opcional) máximo de búsquedas nuevas por corrida, para no demorar de más.
 """
 import os, sys, argparse, urllib.request, shutil, time
+import socket
+
+# Los runners de GitHub no tienen IPv6. Si el dominio resuelve a IPv6 (registro AAAA),
+# Python intenta esa ruta y falla con "Network is unreachable". Forzamos IPv4.
+_orig_getaddrinfo = socket.getaddrinfo
+def _solo_ipv4(host, *args, **kwargs):
+    return [x for x in _orig_getaddrinfo(host, *args, **kwargs) if x[0] == socket.AF_INET]
+socket.getaddrinfo = _solo_ipv4
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lector import leer_excel
