@@ -13,7 +13,7 @@ Variables de entorno:
   BUSCAR_TAPAS   "1" para activar búsqueda de tapas, "0" para placeholder en todos.
   LIMITE_TAPAS   (opcional) máximo de búsquedas nuevas por corrida, para no demorar de más.
 """
-import os, sys, argparse, urllib.request, shutil, time
+import os, sys, argparse, urllib.request, shutil, time, subprocess
 import socket
 
 # Los runners de GitHub no tienen IPv6. Si el dominio resuelve a IPv6 (registro AAAA),
@@ -33,31 +33,78 @@ SALIDA = os.path.join(RAIZ, "docs")        # GitHub Pages puede servir desde /do
 DIR_TAPAS = os.path.join(SALIDA, "tapas")
 REGISTRO_FALLIDOS = os.path.join(RAIZ, ".tapas_fallidas.json")
 
-def descargar_excel(url, destino):
-    print(f"Descargando Excel desde {url} …")
+
+def _descargar_con_curl(url, destino):
+    """
+    curl forzando IPv4 y HTTP/1.1. El servidor de Hostinger (LiteSpeed) cuelga
+    los pedidos HTTP/2 y deja a urllib esperando hasta el timeout; con --http1.1
+    e -4 responde bien. Es el método principal de descarga.
+    """
+    cmd = [
+        "curl", "-4", "--http1.1", "-sS", "-L",
+        "--fail",                       # error si HTTP >= 400
+        "--connect-timeout", "20",
+        "--max-time", "120",
+        "-A", "Mozilla/5.0 (compatible; IchinenBuild/1.0)",
+        "-H", "Accept: */*",
+        "-H", "Connection: close",
+        "-o", destino,
+        url,
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"curl salió con código {res.returncode}: {res.stderr.strip()}")
+    tam = os.path.getsize(destino) if os.path.exists(destino) else 0
+    if tam < 5000:
+        raise ValueError(f"Archivo demasiado chico ({tam} bytes), posible error.")
+    return tam
+
+
+def _descargar_con_urllib(url, destino):
+    """Respaldo si curl no estuviera disponible. Forzamos Connection: close."""
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; IchinenBuild/1.0)",
         "Accept": "*/*",
-        "Connection": "close",  # evita que LiteSpeed cuelgue el keep-alive
+        "Connection": "close",
     }
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=90) as r, open(destino, "wb") as f:
+        f.write(r.read())
+    tam = os.path.getsize(destino)
+    if tam < 5000:
+        raise ValueError(f"Archivo demasiado chico ({tam} bytes), posible error.")
+    return tam
+
+
+def descargar_excel(url, destino):
+    print(f"Descargando Excel desde {url} …")
+    # ¿hay curl disponible? (en los runners de GitHub, sí)
+    tiene_curl = shutil.which("curl") is not None
     ultimo_error = None
     for intento in range(1, 7):  # hasta 6 intentos
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=90) as r, open(destino, "wb") as f:
-                f.write(r.read())
-            tam = os.path.getsize(destino)
-            if tam < 5000:
-                raise ValueError(f"Archivo demasiado chico ({tam} bytes), posible error.")
-            print(f"  Excel guardado ({tam//1024} KB)")
+            if tiene_curl:
+                tam = _descargar_con_curl(url, destino)
+            else:
+                tam = _descargar_con_urllib(url, destino)
+            print(f"  Excel guardado ({tam // 1024} KB){'' if tiene_curl else ' [urllib]'}")
             return True
         except Exception as e:
             ultimo_error = e
-            espera = 8 * intento  # espera creciente: 8, 16, 24…
+            # si curl falló, en el último par de intentos probamos urllib como alternativa
+            if tiene_curl and intento >= 5:
+                try:
+                    tam = _descargar_con_urllib(url, destino)
+                    print(f"  Excel guardado ({tam // 1024} KB) [urllib de respaldo]")
+                    return True
+                except Exception as e2:
+                    ultimo_error = e2
+            espera = 6 * intento  # 6, 12, 18, 24, 30…
             print(f"  Intento {intento} falló: {e}. Reintentando en {espera}s …")
             time.sleep(espera)
     print(f"  No se pudo descargar el Excel: {ultimo_error}")
     return False
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -119,6 +166,7 @@ def main():
 
     n_tapas = len(os.listdir(DIR_TAPAS)) if os.path.exists(DIR_TAPAS) else 0
     print(f"Listo. Sitio en {SALIDA} · {len(libros)} libros · {n_tapas} tapas en disco")
+
 
 if __name__ == "__main__":
     main()
