@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" preserveAspectRatio="xMidYMid slice">
+<rect width="200" height="300" fill="#faf3df"/>
+<rect x="0" y="0" width="66.66" height="4" fill="#2459A8"/>
+<rect x="66.66" y="0" width="66.66" height="4" fill="#E0B52B"/>
+<rect x="133.32" y="0" width="66.68" height="4" fill="#B31217"/>
+<text x="100" y="150" text-anchor="middle" font-family="Cinzel,serif" font-size="40" fill="#8a6a12" opacity="0.55">⁘</text>
+<text x="100" y="215" text-anchor="middle" font-family="Cinzel,serif" font-size="16" letter-spacing="2" fill="#8a6a12">TEATRO</text>
+</svg>

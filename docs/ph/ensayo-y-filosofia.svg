@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" preserveAspectRatio="xMidYMid slice">
+<rect width="200" height="300" fill="#eae6dd"/>
+<rect x="0" y="0" width="66.66" height="4" fill="#2459A8"/>
+<rect x="66.66" y="0" width="66.66" height="4" fill="#E0B52B"/>
+<rect x="133.32" y="0" width="66.68" height="4" fill="#B31217"/>
+<text x="100" y="150" text-anchor="middle" font-family="Cinzel,serif" font-size="40" fill="#4a463b" opacity="0.55">❖</text>
+<text x="100" y="205" text-anchor="middle" font-family="Cinzel,serif" font-size="15" letter-spacing="2" fill="#4a463b">ENSAYO Y</text><text x="100" y="228" text-anchor="middle" font-family="Cinzel,serif" font-size="15" letter-spacing="2" fill="#4a463b">FILOSOFÍA</text>
+</svg>

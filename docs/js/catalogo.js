@@ -8,7 +8,7 @@ const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,
 function tarjeta(l){
   const cover=l.tapa_url
     ?`<div class="cover"><div class="tc"></div><img src="${l.tapa_url}" alt="Tapa de ${l.t}" loading="lazy"></div>`
-    :`<div class="cover"><div class="tc"></div><div class="ph">SIN<br>TAPA</div></div>`;
+    :`<div class="cover"><img src="/ph/${l.cs}.svg" alt="${l.c}" loading="lazy"></div>`;
   const meta=[l.ed,l.an].filter(Boolean).join(' · ');
   const verif=l.v?`<span class="verif">A verificar</span>`:'';
   const au=l.ok?l.a:'Autor a verificar';
