@@ -24,8 +24,14 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
   letter-spacing:1px;text-transform:uppercase;margin-left:20px;}
 .topbar nav a:hover{color:var(--bordo);text-decoration:none;}
 
+/* migas */
+.bc{font-size:.78rem;color:var(--suave);padding:16px 0 0;font-family:'Lora',serif;}
+.bc a{color:var(--suave);text-decoration:underline;text-underline-offset:2px;}
+.bc a:hover{color:var(--bordo);}
+.bc span{margin:0 6px;color:#b3aa93;}
+
 /* buscador */
-.buscador{padding:26px 0 10px;}
+.buscador{padding:18px 0 10px;}
 .buscador h1{font-size:1.7rem;color:var(--bordo);margin-bottom:14px;}
 #q{width:100%;padding:13px 16px;border:1.5px solid var(--linea);background:#fff;
   font-family:'Lora',serif;font-size:16px;color:var(--tinta);}
@@ -44,7 +50,6 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
 .cover{aspect-ratio:2/3;width:100%;background:var(--papel2);border:1px solid var(--linea);
   margin-bottom:10px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
 .cover img{width:100%;height:100%;object-fit:cover;}
-.cover .ph{font-family:'Cinzel',serif;color:#c9bfa3;font-size:.62rem;letter-spacing:1px;text-align:center;padding:0 8px;}
 .cover .tc{position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,
   var(--azul) 0 33.33%,var(--amarillo) 33.33% 66.66%,var(--bordo) 66.66% 100%);}
 .cat{font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:1px;text-transform:uppercase;color:var(--azul);margin-bottom:4px;}
@@ -63,9 +68,24 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
 .mas button{font-family:'Cinzel',serif;font-size:.74rem;letter-spacing:1px;text-transform:uppercase;
   padding:13px 30px;border:1.5px solid var(--bordo);background:transparent;color:var(--bordo);cursor:pointer;}
 .mas button:hover{background:var(--bordo);color:#fff;}
+.pag{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding:0 0 50px;align-items:center;}
+.pag a,.pag strong{font-family:'Cinzel',serif;font-size:.72rem;letter-spacing:1px;
+  padding:9px 14px;border:1px solid var(--linea);background:#fff;color:var(--suave);}
+.pag strong{background:var(--bordo);color:#fff;border-color:var(--bordo);}
+.pag a:hover{border-color:var(--bordo);color:var(--bordo);text-decoration:none;}
+
+/* hubs de navegación (categorías y autores) */
+.hub{padding:6px 0 40px;border-top:1px solid var(--linea);margin-top:10px;}
+.hub h2{font-size:1rem;color:var(--bordo);margin:24px 0 12px;}
+.hub .lista{display:flex;gap:8px;flex-wrap:wrap;}
+.hub .lista a{font-size:.84rem;background:#fff;border:1px solid var(--linea);
+  padding:6px 12px;color:var(--suave);}
+.hub .lista a:hover{border-color:var(--bordo);color:var(--bordo);text-decoration:none;}
+.hub .lista a b{color:var(--tinta);font-weight:600;}
+.intro{max-width:70ch;color:var(--suave);margin:0 0 6px;}
 
 /* página de libro */
-.libro{display:grid;grid-template-columns:300px 1fr;gap:40px;padding:40px 0 60px;align-items:start;}
+.libro{display:grid;grid-template-columns:300px 1fr;gap:40px;padding:26px 0 40px;align-items:start;}
 .libro .cover{max-width:300px;}
 .libro h1{font-size:1.9rem;color:var(--bordo);}
 .libro .au{font-size:1.15rem;color:var(--suave);font-style:italic;margin:0 0 20px;}
@@ -75,6 +95,9 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
 .cta{margin-top:26px;}
 .volver{display:inline-block;margin:24px 0 0;font-family:'Cinzel',serif;font-size:.72rem;
   letter-spacing:1px;text-transform:uppercase;}
+.rel{border-top:1px solid var(--linea);padding:26px 0 10px;}
+.rel h2{font-size:1rem;color:var(--bordo);}
+.rel .grid{padding:14px 0 24px;}
 
 /* footer */
 .footer{background:var(--tinta);color:#e9e4d6;padding:36px 0;text-align:center;}

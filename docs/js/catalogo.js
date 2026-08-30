@@ -1,6 +1,6 @@
 
-let LIBROS=[], filtrados=[], mostrados=0, cat="", q="";
-const PASO=40;
+let LIBROS=[], filtrados=[], mostrados=0, cat="", q="", listo=false;
+const PASO=48, PRERENDER=48;
 const grid=document.getElementById('grid');
 const cont=document.getElementById('contador');
 const masWrap=document.getElementById('mas');
@@ -36,10 +36,19 @@ function render(){
   cont.textContent=`${filtrados.length} libros · mostrando ${mostrados}`;
   masWrap.style.display = mostrados<filtrados.length ? 'block':'none';
 }
-document.getElementById('btn-mas').onclick=render;
-document.getElementById('q').addEventListener('input',e=>{q=e.target.value;aplicar();});
+// Las primeras tarjetas ya vienen en el HTML. No las repintamos al cargar:
+// se conservan y el JS sigue desde ahí. Solo se rehace la grilla al filtrar.
+function continuar(){
+  filtrados=LIBROS; mostrados=Math.min(PRERENDER,LIBROS.length);
+  cont.textContent=`${LIBROS.length} libros · mostrando ${mostrados}`;
+  masWrap.style.display = mostrados<LIBROS.length ? 'block':'none';
+  listo=true;
+}
+document.getElementById('btn-mas').onclick=()=>{ if(listo) render(); };
+document.getElementById('q').addEventListener('input',e=>{ if(!listo) return; q=e.target.value; aplicar(); });
 document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
+  if(!listo) return;
   document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
   ch.classList.add('on'); cat=ch.dataset.cat; aplicar();
 });
-fetch('/datos.json').then(r=>r.json()).then(d=>{LIBROS=d;aplicar();});
+fetch('/datos.json').then(r=>r.json()).then(d=>{LIBROS=d;continuar();});
