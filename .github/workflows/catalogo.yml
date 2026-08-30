@@ -74,7 +74,7 @@ jobs:
           # Completa autor, editorial, año, páginas y temas por ISBN.
           # Solo rellena huecos; nunca pisa un dato que el Excel traía bien.
           ENRIQUECER: "1"
-          LIMITE_ENRIQUECER: "600"
+          LIMITE_ENRIQUECER: "3000"
         run: |
           python motor/build.py
           echo "${{ steps.huella.outputs.actual }}" > .huella_excel
