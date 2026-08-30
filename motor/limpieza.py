@@ -6,42 +6,222 @@ import re
 import unicodedata
 from unidecode import unidecode
 
-# --- Mapa de categorías -------------------------------------------------------
-# Agrupa los "tipos de narración" sucios del Excel en pocas categorías limpias.
-# Todo lo que no matchee cae en "Otros" (categoría residual, esencial).
-MAPA_CATEGORIAS = {
-    "Literatura": [
-        "novela", "novelas", "cuento", "cuentos", "narrativa", "ficcion",
-        "libros de ficcion", "literatura universal", "literatura clasica griega",
-        "clasicos", "fabula", "jovenes lectores", "biografias y relatos",
-        "textos antiguos,clasicos y medievales", "escrito", "escrita", "obra",
-    ],
-    "Poesía": ["poesia", "aforismos", "cancionero"],
-    "Teatro": ["teatro", "dialogo"],
-    "Ensayo y Filosofía": [
-        "filosofia", "ensayo", "ensayo politico", "capitalismo", "psicologia",
-        "historia", "biografia",
-    ],
-    "Arte": ["arte", "pintura / arte", "mitologia", "tango"],
-    "Referencia": ["manual", "diccionario", "matematicas", "general"],
-}
-
-# Etiquetas que claramente NO son un tipo (nombres de colección, basura)
-# se ignoran y el libro cae en "Otros".
+# --- Clasificación por género -------------------------------------------------
+# NOTA IMPORTANTE sobre la fuente:
+# La columna NARRATION_TYPE del Excel de Mercado Libre casi no tiene información
+# de género. El 94 % del catálogo cae en tres valores que describen la FORMA:
+#   "Novela" (2785), "Manual" (933) y "Cuento" (524).
+# Y "Manual" no son manuales: es el cajón residual de la no ficción — ahí están
+# Félix Luna, Fidel Castro, Nietzsche, Fromm, Kandinski, nutrición y biología.
+# Por eso el género se deduce combinando autor, editorial, colección y título,
+# y NARRATION_TYPE queda solo como desempate final.
+#
+# Criterio: preferimos precisión antes que cobertura. Ante la duda un libro cae
+# en "Narrativa" (si es ficción) u "Otros", que son honestos, en vez de arriesgar
+# una categoría equivocada que ensucia la página de esa categoría.
 
 def _norm(s: str) -> str:
     """minúsculas, sin acentos, sin espacios extra — para comparar."""
     s = unidecode((s or "").strip().lower())
     return re.sub(r"\s+", " ", s)
 
-def clasificar(tipo_narracion: str) -> str:
-    t = _norm(tipo_narracion)
-    if not t:
-        return "Otros"
-    for categoria, claves in MAPA_CATEGORIAS.items():
-        if t in claves:
-            return categoria
-    return "Otros"
+
+def _tiene(texto, palabras):
+    """True si alguna palabra aparece como palabra entera en el texto normalizado."""
+    return any(re.search(r"\b" + re.escape(p) + r"\b", texto) for p in palabras)
+
+
+# Editoriales de historieta. Se listan tokens inequívocos: "norma" y "planeta"
+# quedan fuera a propósito porque publican de todo y arrastrarían falsos positivos.
+ED_HISTORIETA = ["dc", "marvel", "zinco", "novaro", "vid", "ecc", "vertigo",
+                 "image", "dark horse", "panini", "ovni", "forum", "bongo",
+                 "columba", "toutain", "deagostini"]
+
+ED_INFANTIL = ["sigmar", "robin hood", "barco de vapor", "altea", "cantaro",
+               "del mirador", "estrada", "guadal", "beascoa"]
+
+ED_ESPIRITUAL = ["soka gakkai", "obelisco", "kier", "errepar new age", "dharma"]
+
+# Autores agrupados por el género con el que se los busca. No pretende ser
+# exhaustivo: cubre a los que tienen volumen real en este catálogo.
+AUTORES_POLICIAL = [
+    "agatha christie", "arthur conan doyle", "conan doyle", "patricia highsmith",
+    "raymond chandler", "dashiell hammett", "mary higgins clark", "john le carre",
+    "ruth rendell", "georges simenon", "edgar allan poe", "james hadley chase",
+    "ellery queen", "john dickson carr", "eric ambler", "rex stout",
+]
+AUTORES_CIFI = [
+    "julio verne", "jules verne", "isaac asimov", "ray bradbury", "h g wells",
+    "arthur c clarke", "philip k dick", "ursula k le guin", "j r r tolkien",
+    "tolkien", "h p lovecraft", "lovecraft", "edgard rice burroughs",
+    "edgar rice burroughs", "stanislaw lem", "frank herbert", "michael ende",
+]
+AUTORES_FILOSOFIA = [
+    "friedrich nietzsche", "nietzsche", "aristoteles", "platon", "seneca",
+    "immanuel kant", "kant", "hegel", "schopenhauer", "jean paul sartre",
+    "sartre", "michel foucault", "foucault", "erich fromm", "jose ingenieros",
+    "baruch spinoza", "spinoza", "confucio", "marco aurelio", "epicteto",
+    "soren kierkegaard", "bertrand russell",
+]
+AUTORES_HISTORIA = [
+    "felix luna", "felipe pigna", "jose maria rosa", "tulio halperin donghi",
+    "norberto galasso", "marcos aguinis", "maria saenz quesada", "eric hobsbawm",
+    "fidel castro", "ernesto che guevara", "che guevara", "arturo jauretche",
+    "rodolfo walsh", "osvaldo bayer",
+]
+AUTORES_TEATRO = [
+    "william shakespeare", "shakespeare", "florencio sanchez", "moliere",
+    "federico garcia lorca", "roberto cossa", "henrik ibsen", "anton chejov",
+    "bertolt brecht", "sofocles", "esquilo", "euripides", "aristofanes",
+]
+AUTORES_POESIA = [
+    "pablo neruda", "federico garcia lorca", "antonio machado", "ruben dario",
+    "alfonsina storni", "walt whitman", "charles baudelaire", "rimbaud",
+    "jose hernandez", "olegario victor andrade", "gustavo adolfo becquer",
+]
+# Clásicos de dominio público: es la subcategoría con demanda de búsqueda más
+# clara dentro de la narrativa general ("clásicos de la literatura usados").
+AUTORES_CLASICOS = [
+    "oscar wilde", "mark twain", "robert louis stevenson", "charles dickens",
+    "louisa may alcott", "henry james", "franz kafka", "jane austen",
+    "honore de balzac", "fiodor dostoievski", "dostoievski", "leon tolstoi",
+    "tolstoi", "victor hugo", "alejandro dumas", "alexandre dumas",
+    "emily bronte", "charlotte bronte", "gustave flaubert", "herman melville",
+    "daniel defoe", "jonathan swift", "miguel de cervantes", "cervantes",
+    "anton chejov", "guy de maupassant", "nathaniel hawthorne", "joseph conrad",
+]
+AUTORES_THRILLER = [
+    "sidney sheldon", "morris west", "wilbur smith", "frederick forsyth",
+    "ken follett", "robin cook", "michael crichton", "tom clancy",
+    "john grisham", "stephen king", "dean koontz", "clive cussler",
+]
+AUTORES_ROMANTICA = [
+    "danielle steel", "victoria holt", "guy des cars", "corin tellado",
+    "barbara cartland", "nora roberts", "rosamunde pilcher", "johanna lindsey",
+]
+AUTORES_HISTORICA = [
+    "valerio massimo manfredi", "manfredi", "robert graves", "marguerite yourcenar",
+    "gore vidal", "colleen mccullough", "noah gordon", "arturo perez reverte",
+]
+# Autores mal clasificados por la columna del Excel: son dramaturgos, poetas
+# o autores infantiles cuyos libros venían marcados como "Novela".
+AUTORES_TEATRO_EXTRA = ["gregorio de laferrere", "laferrere", "alejandro casona",
+                        "armando discepolo", "roberto arlt teatro", "samuel beckett"]
+AUTORES_INFANTIL = ["luis pescetti", "maria elena walsh", "graciela montes",
+                    "elsa bornemann", "roald dahl", "gustavo roldan",
+                    "ema wolf", "silvia schujer", "liliana bodoc"]
+
+# Palabras del título. Se aplican después de autor y editorial.
+TIT_DICCIONARIO = ["diccionario", "enciclopedia", "atlas", "gramatica", "vocabulario"]
+TIT_HISTORIA = ["historia", "historias", "guerra", "revolucion", "peron", "peronismo",
+                "malvinas", "dictadura", "independencia", "imperialismo", "imperio",
+                "politica", "politico", "geopolitica", "nacion", "patria"]
+TIT_PSICOLOGIA = ["psicologia", "psicoanalisis", "autoestima", "ansiedad", "depresion",
+                  "pareja", "emociones", "felicidad", "feliz", "autoayuda", "exito",
+                  "inteligencia emocional", "miedo", "duelo"]
+TIT_ESPIRITUAL = ["budismo", "buda", "biblia", "jesus", "espiritual", "meditacion",
+                  "yoga", "zen", "karma", "reiki", "tarot", "astrologia", "dios",
+                  "oracion", "alma", "angeles"]
+TIT_CIENCIA = ["biologia", "fisica", "quimica", "matematica", "matematicas",
+               "anatomia", "fisiologia", "medicina", "nutricion", "salud",
+               "astronomia", "genetica", "ecologia"]
+TIT_ARTE = ["arte", "pintura", "pintor", "musica", "cine", "fotografia",
+            "arquitectura", "escultura", "tango", "opera", "danza"]
+TIT_ECONOMIA = ["economia", "economico", "finanzas", "mercado", "empresa",
+                "management", "productividad", "marketing", "negocios", "desarrollo"]
+TIT_COCINA = ["cocina", "recetas", "reposteria", "vinos", "gastronomia"]
+TIT_INFANTIL = ["cuentos infantiles", "para chicos", "para ninos"]
+
+# Valores de NARRATION_TYPE que sí son confiables cuando aparecen.
+TIPO_DIRECTO = {
+    "poesia": "Poesía", "aforismos": "Poesía", "cancionero": "Poesía",
+    "teatro": "Teatro", "dialogo": "Teatro",
+    "filosofia": "Filosofía y pensamiento", "ensayo": "Filosofía y pensamiento",
+    "ensayo politico": "Historia y política", "capitalismo": "Historia y política",
+    "historia": "Historia y política",
+    "psicologia": "Psicología y autoayuda",
+    "arte": "Arte y música", "pintura / arte": "Arte y música", "tango": "Arte y música",
+    "mitologia": "Mitología y clásicos",
+    "literatura clasica griega": "Mitología y clásicos",
+    "textos antiguos,clasicos y medievales": "Mitología y clásicos",
+    "diccionario": "Diccionarios y consulta",
+    "matematicas": "Ciencia y salud",
+    "biografia": "Biografías y testimonios",
+    "biografias y relatos": "Biografías y testimonios",
+    "jovenes lectores": "Infantil y juvenil",
+    "fabula": "Infantil y juvenil",
+}
+
+FICCION = {"novela", "novelas", "cuento", "cuentos", "narrativa", "ficcion",
+           "libros de ficcion", "literatura universal", "clasicos", "escrito",
+           "escrita", "obra", "libro"}
+
+
+def clasificar(tipo_narracion: str, titulo: str = "", autor: str = "",
+               editorial: str = "", coleccion: str = "") -> str:
+    """
+    Devuelve la categoría del libro combinando todas las señales disponibles.
+    El orden importa: las señales más confiables se evalúan primero.
+    """
+    t   = _norm(tipo_narracion)
+    tit = _norm(titulo)
+    au  = _norm(autor)
+    ed  = _norm(editorial)
+    col = _norm(coleccion)
+
+    # 1) Editorial — la señal más fuerte y menos ambigua.
+    if _tiene(ed, ED_HISTORIETA):
+        return "Historieta y cómic"
+    if _tiene(ed, ED_INFANTIL) or _tiene(col, ["barco de vapor"]):
+        return "Infantil y juvenil"
+    if _tiene(ed, ED_ESPIRITUAL) or _tiene(col, ["budismo"]):
+        return "Espiritualidad y religión"
+
+    # 2) Autor — para los que tienen volumen real en el catálogo.
+    if _tiene(au, AUTORES_POLICIAL):  return "Policial y misterio"
+    if _tiene(au, AUTORES_CIFI):      return "Ciencia ficción y fantasía"
+    if _tiene(au, AUTORES_THRILLER):  return "Thriller y suspenso"
+    if _tiene(au, AUTORES_ROMANTICA): return "Novela romántica"
+    if _tiene(au, AUTORES_HISTORICA): return "Novela histórica"
+    if _tiene(au, AUTORES_INFANTIL):  return "Infantil y juvenil"
+    if _tiene(au, AUTORES_TEATRO_EXTRA): return "Teatro"
+    if _tiene(au, AUTORES_CLASICOS):  return "Clásicos de la literatura"
+    if _tiene(au, AUTORES_TEATRO) and t not in ("poesia",): return "Teatro"
+    if _tiene(au, AUTORES_POESIA) and t in ("poesia", "aforismos", "cancionero"):
+        return "Poesía"
+    if _tiene(au, AUTORES_FILOSOFIA): return "Filosofía y pensamiento"
+    if _tiene(au, AUTORES_HISTORIA):  return "Historia y política"
+
+    # 3) Colección, cuando dice algo real.
+    if _tiene(col, ["pensadores universales", "aprender a pensar"]):
+        return "Filosofía y pensamiento"
+    if _tiene(col, ["mitologia", "mitologia novelada", "grecia y roma"]):
+        return "Mitología y clásicos"
+    if _tiene(col, ["septimo circulo"]):
+        return "Policial y misterio"
+
+    # 4) Tipo de narración, solo los valores que sí informan.
+    if t in TIPO_DIRECTO:
+        return TIPO_DIRECTO[t]
+
+    # 5) Título — última red, y solo para la no ficción, donde el título
+    #    suele nombrar la materia. En ficción el título no dice el género.
+    no_ficcion = t not in FICCION
+    if no_ficcion:
+        if _tiene(tit, TIT_DICCIONARIO): return "Diccionarios y consulta"
+        if _tiene(tit, TIT_ESPIRITUAL):  return "Espiritualidad y religión"
+        if _tiene(tit, TIT_COCINA):      return "Cocina y hogar"
+        if _tiene(tit, TIT_PSICOLOGIA):  return "Psicología y autoayuda"
+        if _tiene(tit, TIT_CIENCIA):     return "Ciencia y salud"
+        if _tiene(tit, TIT_ARTE):        return "Arte y música"
+        if _tiene(tit, TIT_HISTORIA):    return "Historia y política"
+        if _tiene(tit, TIT_ECONOMIA):    return "Economía y sociedad"
+        if _tiene(tit, TIT_INFANTIL):    return "Infantil y juvenil"
+        # No ficción sin materia identificable: no la inventamos.
+        return "Ensayo y no ficción"
+
+    # 6) Ficción sin género identificable. Es una categoría honesta y grande.
+    return "Narrativa"
 
 # --- Limpieza de texto --------------------------------------------------------
 
@@ -106,6 +286,10 @@ def limpiar_anio(x: str):
 
 def limpiar_editorial(e: str):
     e = (e or "").strip().strip(" .-")
+    # El Excel trae dobles espacios ("DC /  Zinco"), que se ven feos en el
+    # <title> y en la ficha. Se colapsan acá, una sola vez, para todo el sitio.
+    e = re.sub(r"\s+", " ", e)
+    e = re.sub(r"\s*/\s*", " / ", e)
     if not e:
         return ""
     letras = re.sub(r"[^a-zA-ZáéíóúñÁÉÍÓÚÑ]", "", e)

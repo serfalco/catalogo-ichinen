@@ -45,7 +45,13 @@ def leer_excel(path: str):
         autor, autor_ok = limpiar_autor(_celda(r, "AUTHOR"))
         anio = limpiar_anio(_celda(r, "PUBLICATION_YEAR"))
         editorial = limpiar_editorial(_celda(r, "BOOK_PUBLISHER"))
-        categoria = clasificar(_celda(r, "NARRATION_TYPE"))
+        categoria = clasificar(
+            _celda(r, "NARRATION_TYPE"),
+            titulo=titulo,
+            autor=autor if autor_ok else _celda(r, "AUTHOR"),
+            editorial=_celda(r, "BOOK_PUBLISHER"),
+            coleccion=_celda(r, "BOOK_COLLECTION"),
+        )
         isbn = isbn_valido(_celda(r, "GTIN"))
 
         # slug único (si se repite, sufijo incremental)
@@ -75,7 +81,51 @@ def leer_excel(path: str):
             "coleccion": _celda(r, "BOOK_COLLECTION"),
             "faltantes": faltantes,
         })
+
+    _fusionar_categorias_chicas(libros)
     return libros
+
+
+# Una categoría con muy pocos libros genera una página flaca, que es justo lo
+# que estamos tratando de evitar. Las que no llegan al mínimo se absorben en
+# su categoría madre. El umbral es el tamaño mínimo para que una página de
+# listado tenga sentido para el visitante y para Google.
+MIN_POR_CATEGORIA = 20
+CATEGORIA_MADRE = {
+    "Cocina y hogar":           "Ensayo y no ficción",
+    "Biografías y testimonios": "Ensayo y no ficción",
+    "Diccionarios y consulta":  "Ensayo y no ficción",
+    "Ciencia y salud":          "Ensayo y no ficción",
+    "Economía y sociedad":      "Ensayo y no ficción",
+    "Psicología y autoayuda":   "Ensayo y no ficción",
+    "Arte y música":            "Ensayo y no ficción",
+    "Mitología y clásicos":     "Clásicos de la literatura",
+    "Novela histórica":         "Narrativa",
+    "Novela romántica":         "Narrativa",
+    "Thriller y suspenso":      "Narrativa",
+    "Ciencia ficción y fantasía": "Narrativa",
+    "Policial y misterio":      "Narrativa",
+    "Clásicos de la literatura": "Narrativa",
+    "Infantil y juvenil":       "Narrativa",
+    "Espiritualidad y religión": "Ensayo y no ficción",
+    "Historia y política":      "Ensayo y no ficción",
+    "Filosofía y pensamiento":  "Ensayo y no ficción",
+    "Poesía":                   "Narrativa",
+    "Teatro":                   "Narrativa",
+}
+
+
+def _fusionar_categorias_chicas(libros):
+    from collections import Counter
+    for _ in range(5):  # puede hacer falta más de una pasada en cascada
+        cuenta = Counter(l["categoria"] for l in libros)
+        chicas = {c for c, n in cuenta.items()
+                  if n < MIN_POR_CATEGORIA and c in CATEGORIA_MADRE}
+        if not chicas:
+            break
+        for l in libros:
+            if l["categoria"] in chicas:
+                l["categoria"] = CATEGORIA_MADRE[l["categoria"]]
 
 if __name__ == "__main__":
     import sys, json

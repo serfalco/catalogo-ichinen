@@ -12,9 +12,10 @@ Produce:
 Criterio de indexación (importante):
   Google no debe recibir 4.558 fichas de calidad despareja. Se marcan como
   `noindex, follow` —y se excluyen del sitemap— las fichas cuyo dato principal
-  no es confiable (autor sin verificar). Siguen visibles y buscables para el
-  visitante; simplemente no se ofrecen al índice. Es reversible: cuando el dato
-  se corrige, la ficha vuelve a entrar sola en la próxima corrida.
+  no es confiable (autor sin verificar), EXCEPTO en las categorías donde el autor
+  no es un dato de búsqueda (ver CAT_SIN_AUTOR: historieta). Siguen visibles y
+  buscables para el visitante; simplemente no se ofrecen al índice. Es reversible:
+  cuando el dato se corrige, la ficha vuelve a entrar sola en la próxima corrida.
 """
 import os, json, html, shutil
 from datetime import date
@@ -43,9 +44,39 @@ def wa_link(titulo, autor):
     return f"https://wa.me/{WA_NUMERO}?text={quote(msg)}"
 
 
+# Categorías donde el autor no es un dato de búsqueda: nadie busca el autor de
+# un Batman de Zinco, se busca por título, serie o editorial. Que falte el autor
+# no las descalifica, y el Excel casi nunca lo trae para historieta.
+CAT_SIN_AUTOR = {"Historieta y cómic"}
+
+
 def indexable(libro):
     """¿Se le ofrece esta ficha a Google? Ver nota de criterio arriba."""
-    return bool(libro.get("autor_ok"))
+    if libro.get("autor_ok"):
+        return True
+    return libro.get("categoria") in CAT_SIN_AUTOR
+
+
+def autor_texto(libro):
+    """
+    El autor como texto plano, para <title> y descripciones. Devuelve "" cuando
+    no hay un dato publicable: nunca "Autor a verificar", que es una nota interna
+    y no puede terminar siendo el título que Google muestra en los resultados.
+    """
+    if libro.get("autor_ok"):
+        return libro["autor"]
+    if libro.get("categoria") in CAT_SIN_AUTOR and libro.get("editorial"):
+        return libro["editorial"]
+    return ""
+
+
+def linea_autor(libro, enlace=None):
+    """Qué mostrar donde va el autor, en HTML. En historieta, la editorial dice más."""
+    if libro.get("autor_ok"):
+        return f'<a href="{enlace}">{esc(libro["autor"])}</a>' if enlace else esc(libro["autor"])
+    if libro.get("categoria") in CAT_SIN_AUTOR:
+        return esc(libro["editorial"]) if libro.get("editorial") else ""
+    return "Autor a verificar"
 
 
 # ---------------------------------------------------------------------------
@@ -53,13 +84,23 @@ def indexable(libro):
 # ornamento tipográfico. Se generan como SVG (peso casi nulo, nítidos siempre).
 # (fondo, texto, ornamento)
 ESTILO_CATEGORIA = {
-    "Literatura":         ("#f3e7e7", "#7a0c10", "✦"),  # ✦
-    "Poesía":             ("#e7edf6", "#1b4078", "❧"),  # ❧
-    "Teatro":             ("#faf3df", "#8a6a12", "⁘"),  # ⁘
-    "Ensayo y Filosofía": ("#eae6dd", "#4a463b", "❖"),  # ❖
-    "Arte":               ("#f3e7e7", "#7a0c10", "◈"),  # ◈
-    "Referencia":         ("#e7edf6", "#1b4078", "※"),  # ※
-    "Otros":              ("#efe9d9", "#5b5648", "❦"),  # ❦
+    "Narrativa":                  ("#f3e7e7", "#7a0c10", "✦"),
+    "Clásicos de la literatura":  ("#f0e6e0", "#6d3a1e", "❈"),
+    "Ensayo y no ficción":        ("#eae6dd", "#4a463b", "❖"),
+    "Filosofía y pensamiento":    ("#e6e4dc", "#3f4a3b", "◉"),
+    "Historia y política":        ("#ece5da", "#6b4a20", "⚑"),
+    "Poesía":                     ("#e7edf6", "#1b4078", "❧"),
+    "Teatro":                     ("#faf3df", "#8a6a12", "⁘"),
+    "Policial y misterio":        ("#e4e2e6", "#3a3340", "☾"),
+    "Thriller y suspenso":        ("#e8e3e3", "#5a2a2a", "✷"),
+    "Ciencia ficción y fantasía": ("#e3ecec", "#14555a", "✧"),
+    "Novela romántica":           ("#f6e8ec", "#8a2f4d", "❥"),
+    "Novela histórica":           ("#eee7d8", "#6b551f", "⌘"),
+    "Historieta y cómic":         ("#e8eef7", "#1b4078", "◧"),
+    "Infantil y juvenil":         ("#fdf1dc", "#a05a12", "☺"),
+    "Mitología y clásicos":       ("#efe9dd", "#5a4a26", "⚭"),
+    "Espiritualidad y religión":  ("#eae7f0", "#463a63", "✤"),
+    "Psicología y autoayuda":     ("#e6ede8", "#2c5340", "❂"),
 }
 DEFAULT_ESTILO = ("#efe9d9", "#5b5648", "❦")
 
@@ -291,7 +332,7 @@ def _cover_html(libro, lazy=True):
 def _tarjeta_html(l):
     """Una tarjeta de la grilla, renderizada del lado del servidor."""
     meta = " · ".join([x for x in (l["editorial"], l["anio"]) if x])
-    autor = esc(l["autor"]) if l["autor_ok"] else "Autor a verificar"
+    autor = linea_autor(l)
     verif = '<span class="verif">A verificar</span>' if [f for f in l["faltantes"] if f != "autor"] else ""
     return (f'<article class="card"><a href="/libro/{l["slug"]}.html" style="color:inherit">'
             f'{_cover_html(l)}<div class="cat">{esc(l["categoria"])}</div>{verif}'
@@ -303,7 +344,9 @@ def _tarjeta_html(l):
 
 # ---------------------------------------------------------------------------
 def generar_pagina_libro(libro, autores_idx):
-    titulo_seo = f'{libro["titulo"]} — {libro["autor"]} | Librería Ichinén'
+    au_txt = autor_texto(libro)
+    titulo_seo = (f'{libro["titulo"]} — {au_txt} | Librería Ichinén' if au_txt
+                  else f'{libro["titulo"]} — libro usado | Librería Ichinén')
     desc = f'{libro["titulo"]}'
     if libro["autor_ok"]:
         desc += f' de {libro["autor"]}'
@@ -368,8 +411,7 @@ def generar_pagina_libro(libro, autores_idx):
     verif = (f'<p class="verif">Datos a verificar: {esc(", ".join(faltantes_visibles))} · '
              f'consultá y te confirmamos</p>') if faltantes_visibles else ""
 
-    autor_linea = (f'<a href="/autor/{au_slug}/">{esc(libro["autor"])}</a>' if au_slug
-                   else (esc(libro["autor"]) if libro["autor_ok"] else "Autor a verificar"))
+    autor_linea = linea_autor(libro, enlace=f"/autor/{au_slug}/" if au_slug else None)
 
     # --- Relacionados: enlaces internos reales ----------------------------
     rel_html = ""
@@ -510,7 +552,7 @@ function tarjeta(l){
     :`<div class="cover"><img src="/ph/${l.cs}.svg" alt="${l.c}" loading="lazy"></div>`;
   const meta=[l.ed,l.an].filter(Boolean).join(' · ');
   const verif=l.v?`<span class="verif">A verificar</span>`:'';
-  const au=l.ok?l.a:'Autor a verificar';
+  const au=l.ok?l.a:(l.c==='Historieta y cómic'?(l.ed||''):'Autor a verificar');
   return `<article class="card"><a href="/libro/${l.s}.html" style="color:inherit">
     ${cover}<div class="cat">${l.c}</div>${verif}
     <div class="t">${l.t}</div><div class="a">${au}</div>
