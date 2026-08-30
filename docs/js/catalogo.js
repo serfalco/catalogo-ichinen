@@ -11,7 +11,7 @@ function tarjeta(l){
     :`<div class="cover"><img src="/ph/${l.cs}.svg" alt="${l.c}" loading="lazy"></div>`;
   const meta=[l.ed,l.an].filter(Boolean).join(' · ');
   const verif=l.v?`<span class="verif">A verificar</span>`:'';
-  const au=l.ok?l.a:'Autor a verificar';
+  const au=l.ok?l.a:(l.c==='Historieta y cómic'?(l.ed||''):'Autor a verificar');
   return `<article class="card"><a href="/libro/${l.s}.html" style="color:inherit">
     ${cover}<div class="cat">${l.c}</div>${verif}
     <div class="t">${l.t}</div><div class="a">${au}</div>
