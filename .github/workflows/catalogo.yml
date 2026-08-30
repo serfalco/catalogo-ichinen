@@ -84,20 +84,30 @@ jobs:
         run: |
           git config user.name "Catálogo Ichinén (bot)"
           git config user.email "actions@github.com"
-          git add docs .huella_excel .tapas_fallidas.json .enriquecido.json listado_ultimo_ok.xlsx 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "Sin cambios para publicar."
-          else
-            git commit -m "Actualizar catálogo $(date +%Y-%m-%d)"
-            # Sincronizar con el remoto por si hubo otros commits mientras corría,
-            # y reintentar el push ante choques de concurrencia.
-            for intento in 1 2 3; do
-              git pull --rebase --autostash origin main || true
-              if git push origin main; then
-                echo "Publicado."
-                break
-              fi
-              echo "Push rechazado, reintento $intento …"
-              sleep 5
-            done
-          fi
+          # Todo lo que publicamos es SALIDA GENERADA: docs/, las cachés y el
+          # respaldo del Excel. Si mientras corríamos otra corrida publicó, no
+          # hay nada que fusionar — nuestra salida es más nueva y manda. Por eso
+          # se rebasea sobre origin/main en vez de hacer pull --rebase, que
+          # entra en conflicto con archivos generados (pasó con .huella_excel:
+          # dejó el repo en estado inconsistente y se perdieron 18 minutos de
+          # consultas a las APIs).
+          for intento in 1 2 3; do
+            git fetch origin main
+            git reset --soft origin/main
+            git add -A docs .huella_excel .tapas_fallidas.json .enriquecido.json listado_ultimo_ok.xlsx 2>/dev/null || true
+            if git diff --cached --quiet; then
+              echo "Sin cambios para publicar."
+              exit 0
+            fi
+            git commit -q -m "Actualizar catálogo $(date +%Y-%m-%d)"
+            if git push origin HEAD:main; then
+              echo "Publicado."
+              exit 0
+            fi
+            echo "Push rechazado, reintento $intento …"
+            sleep 5
+          done
+          # Sin esto el job termina en verde aunque no haya publicado nada,
+          # que es exactamente lo que pasó y por qué no nos enteramos.
+          echo "::error::No se pudo publicar después de 3 intentos."
+          exit 1
