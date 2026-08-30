@@ -71,6 +71,10 @@ jobs:
           EXCEL_URL: ${{ vars.EXCEL_URL }}
           BUSCAR_TAPAS: "1"
           LIMITE_TAPAS: "800"
+          # Completa autor, editorial, año, páginas y temas por ISBN.
+          # Solo rellena huecos; nunca pisa un dato que el Excel traía bien.
+          ENRIQUECER: "1"
+          LIMITE_ENRIQUECER: "600"
         run: |
           python motor/build.py
           echo "${{ steps.huella.outputs.actual }}" > .huella_excel
@@ -80,7 +84,7 @@ jobs:
         run: |
           git config user.name "Catálogo Ichinén (bot)"
           git config user.email "actions@github.com"
-          git add docs .huella_excel .tapas_fallidas.json listado_ultimo_ok.xlsx 2>/dev/null || true
+          git add docs .huella_excel .tapas_fallidas.json .enriquecido.json listado_ultimo_ok.xlsx 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "Sin cambios para publicar."
           else
