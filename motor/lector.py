@@ -45,10 +45,13 @@ def leer_excel(path: str):
         autor, autor_ok = limpiar_autor(_celda(r, "AUTHOR"))
         anio = limpiar_anio(_celda(r, "PUBLICATION_YEAR"))
         editorial = limpiar_editorial(_celda(r, "BOOK_PUBLISHER"))
+        # El autor crudo se conserva aunque no sea publicable: aun cuando no
+        # sirva para mostrar, puede llevar señal de género para clasificar.
+        autor_raw = autor if autor_ok else _celda(r, "AUTHOR")
         categoria = clasificar(
             _celda(r, "NARRATION_TYPE"),
             titulo=titulo,
-            autor=autor if autor_ok else _celda(r, "AUTHOR"),
+            autor=autor_raw,
             editorial=_celda(r, "BOOK_PUBLISHER"),
             coleccion=_celda(r, "BOOK_COLLECTION"),
         )
@@ -80,10 +83,38 @@ def leer_excel(path: str):
             "paginas": _celda(r, "PAGES_NUMBER"),
             "coleccion": _celda(r, "BOOK_COLLECTION"),
             "faltantes": faltantes,
+            # Campos crudos guardados para poder reclasificar después del
+            # enriquecimiento, cuando aparecen los temas que devuelve la API.
+            "_tipo": _celda(r, "NARRATION_TYPE"),
+            "_autor_raw": autor_raw,
+            "temas": [],
         })
 
     _fusionar_categorias_chicas(libros)
     return libros
+
+
+def reclasificar(libros):
+    """
+    Vuelve a clasificar después del enriquecimiento. Se llama desde build.py,
+    una vez que los temas de la API están cargados en cada libro.
+    Devuelve cuántos libros cambiaron de categoría.
+    """
+    # Se compara contra el estado final, después de fusionar las categorías
+    # chicas. Si se contara dentro del bucle se registrarían idas y vueltas que
+    # la fusión cancela, y el número del log sería más alto que los cambios reales.
+    antes = [l["categoria"] for l in libros]
+    for l in libros:
+        l["categoria"] = clasificar(
+            l["_tipo"],
+            titulo=l["titulo"],
+            autor=l["autor"] if l["autor_ok"] else l.get("_autor_raw", ""),
+            editorial=l["editorial"],
+            coleccion=l["coleccion"],
+            temas=l.get("temas"),
+        )
+    _fusionar_categorias_chicas(libros)
+    return sum(1 for a, l in zip(antes, libros) if a != l["categoria"])
 
 
 # Una categoría con muy pocos libros genera una página flaca, que es justo lo

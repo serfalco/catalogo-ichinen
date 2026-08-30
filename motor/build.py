@@ -24,9 +24,10 @@ def _solo_ipv4(host, *args, **kwargs):
 socket.getaddrinfo = _solo_ipv4
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lector import leer_excel
+from lector import leer_excel, reclasificar
 from generador import generar_sitio
 from tapas import buscar_tapas
+from enriquecer import enriquecer
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # raíz del repo
 SALIDA = os.path.join(RAIZ, "docs")        # GitHub Pages puede servir desde /docs
@@ -134,6 +135,21 @@ def main():
     print("Leyendo y limpiando libros …")
     libros = leer_excel(excel_local)
     print(f"  {len(libros)} libros")
+
+    # Completar huecos con Open Library y Google Books. Nunca pisa datos buenos:
+    # solo rellena lo que el Excel dejó vacío. Ver motor/enriquecer.py.
+    if os.environ.get("ENRIQUECER", "0") == "1":
+        limite = os.environ.get("LIMITE_ENRIQUECER")
+        limite = int(limite) if limite else None
+        print(f"Enriqueciendo datos por ISBN (límite nuevas: {limite or 'sin límite'}) …")
+        st = enriquecer(libros, os.path.join(RAIZ, ".enriquecido.json"), limite=limite)
+        print(f"  consultas nuevas: {st['consultas_nuevas']} · en caché: {st['en_cache']} "
+              f"· con datos: {st['con_datos']}")
+        print(f"  campos completados: {st['campos'] or 'ninguno'}")
+        cambios = reclasificar(libros)
+        print(f"  recategorizados con los temas de la API: {cambios}")
+    else:
+        print("Enriquecimiento desactivado (ENRIQUECER != 1).")
 
     # Conservar tapas ya descargadas entre corridas: mover de la salida anterior
     tapas_previas = DIR_TAPAS

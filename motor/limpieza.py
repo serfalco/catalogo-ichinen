@@ -157,8 +157,59 @@ FICCION = {"novela", "novelas", "cuento", "cuentos", "narrativa", "ficcion",
            "escrita", "obra", "libro"}
 
 
+# Temas que devuelven Open Library y Google Books, mapeados a nuestras categorías.
+# Se comparan como subcadena sobre el tema normalizado. El orden importa: el
+# primero que matchea gana, así que van de más específico a más general.
+# Los temas genéricos ("fiction", "literature", "general") se ignoran a propósito:
+# no dicen nada y arrastrarían medio catálogo a una categoría equivocada.
+TEMAS_MAPA = [
+    ("comic", "Historieta y cómic"), ("graphic novel", "Historieta y cómic"),
+    ("cartoons", "Historieta y cómic"), ("superhero", "Historieta y cómic"),
+    ("detective", "Policial y misterio"), ("mystery", "Policial y misterio"),
+    ("crime", "Policial y misterio"), ("policial", "Policial y misterio"),
+    ("suspense", "Thriller y suspenso"), ("thriller", "Thriller y suspenso"),
+    ("espionage", "Thriller y suspenso"), ("spy stories", "Thriller y suspenso"),
+    ("science fiction", "Ciencia ficción y fantasía"), ("fantasy", "Ciencia ficción y fantasía"),
+    ("ciencia ficcion", "Ciencia ficción y fantasía"),
+    ("romance", "Novela romántica"), ("love stories", "Novela romántica"),
+    ("historical fiction", "Novela histórica"),
+    ("juvenile", "Infantil y juvenil"), ("children", "Infantil y juvenil"),
+    ("picture books", "Infantil y juvenil"), ("infantil", "Infantil y juvenil"),
+    ("poetry", "Poesía"), ("poesia", "Poesía"),
+    ("drama", "Teatro"), ("plays", "Teatro"), ("theater", "Teatro"), ("teatro", "Teatro"),
+    ("philosophy", "Filosofía y pensamiento"), ("filosofia", "Filosofía y pensamiento"),
+    ("ethics", "Filosofía y pensamiento"), ("logic", "Filosofía y pensamiento"),
+    ("psychology", "Psicología y autoayuda"), ("self-help", "Psicología y autoayuda"),
+    ("psicologia", "Psicología y autoayuda"),
+    ("religion", "Espiritualidad y religión"), ("spiritual", "Espiritualidad y religión"),
+    ("buddhism", "Espiritualidad y religión"), ("bible", "Espiritualidad y religión"),
+    ("mythology", "Mitología y clásicos"), ("classical literature", "Mitología y clásicos"),
+    ("history", "Historia y política"), ("historia", "Historia y política"),
+    ("political", "Historia y política"), ("politics", "Historia y política"),
+    ("biography", "Ensayo y no ficción"), ("autobiography", "Ensayo y no ficción"),
+    ("business", "Ensayo y no ficción"), ("economics", "Ensayo y no ficción"),
+    ("science", "Ensayo y no ficción"), ("medical", "Ensayo y no ficción"),
+    ("cooking", "Ensayo y no ficción"), ("art", "Ensayo y no ficción"),
+    ("music", "Ensayo y no ficción"), ("essays", "Ensayo y no ficción"),
+]
+TEMAS_IGNORADOS = {"fiction", "literature", "general", "spanish", "espanol",
+                   "argentina", "books", "readers", "translations", "classics"}
+
+
+def _por_temas(temas):
+    """Devuelve la categoría sugerida por los temas de la API, o None."""
+    for t in (temas or []):
+        tn = _norm(t)
+        if not tn or tn in TEMAS_IGNORADOS:
+            continue
+        for clave, categoria in TEMAS_MAPA:
+            if clave in tn:
+                return categoria
+    return None
+
+
 def clasificar(tipo_narracion: str, titulo: str = "", autor: str = "",
-               editorial: str = "", coleccion: str = "") -> str:
+               editorial: str = "", coleccion: str = "", temas=None) -> str:
     """
     Devuelve la categoría del libro combinando todas las señales disponibles.
     El orden importa: las señales más confiables se evalúan primero.
@@ -192,7 +243,13 @@ def clasificar(tipo_narracion: str, titulo: str = "", autor: str = "",
     if _tiene(au, AUTORES_FILOSOFIA): return "Filosofía y pensamiento"
     if _tiene(au, AUTORES_HISTORIA):  return "Historia y política"
 
-    # 3) Colección, cuando dice algo real.
+    # 3) Temas que devolvió la API por ISBN. Van después de las listas curadas
+    #    de autores (que son más precisas) y antes de todo lo demás.
+    por_tema = _por_temas(temas)
+    if por_tema:
+        return por_tema
+
+    # 4) Colección, cuando dice algo real.
     if _tiene(col, ["pensadores universales", "aprender a pensar"]):
         return "Filosofía y pensamiento"
     if _tiene(col, ["mitologia", "mitologia novelada", "grecia y roma"]):
