@@ -57,10 +57,20 @@ jobs:
             echo "actual=$HUELLA" >> "$GITHUB_OUTPUT"
             ANTERIOR=""
             if [ -f .huella_excel ]; then ANTERIOR=$(cat .huella_excel); fi
-            if [ "$HUELLA" = "$ANTERIOR" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            # Quedan ISBN que la API no llegó a responder en la corrida anterior.
+            # Si los hay, se reconstruye igual aunque el Excel no haya cambiado:
+            # de lo contrario esos libros esperan a la próxima carga de Excel,
+            # que puede tardar meses, y el catálogo deja de mejorar solo.
+            PENDIENTES=0
+            if [ -f .pendientes ]; then PENDIENTES=$(tr -dc '0-9' < .pendientes); fi
+            PENDIENTES=${PENDIENTES:-0}
+            if [ "$HUELLA" = "$ANTERIOR" ] && [ "${{ github.event_name }}" = "schedule" ] && [ "$PENDIENTES" -eq 0 ]; then
               echo "cambio=no" >> "$GITHUB_OUTPUT"
-              echo "El Excel no cambió. No hace falta reconstruir."
+              echo "El Excel no cambió y no hay ISBN pendientes. No hace falta reconstruir."
             else
+              if [ "$HUELLA" = "$ANTERIOR" ] && [ "$PENDIENTES" -gt 0 ]; then
+                echo "El Excel no cambió, pero quedan $PENDIENTES ISBN pendientes: se reconstruye para reintentarlos."
+              fi
               echo "cambio=si" >> "$GITHUB_OUTPUT"
             fi
           fi
@@ -94,7 +104,7 @@ jobs:
           for intento in 1 2 3; do
             git fetch origin main
             git reset --soft origin/main
-            git add -A docs .huella_excel .tapas_fallidas.json .enriquecido.json listado_ultimo_ok.xlsx 2>/dev/null || true
+            git add -A docs .huella_excel .tapas_fallidas.json .enriquecido.json .pendientes listado_ultimo_ok.xlsx 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "Sin cambios para publicar."
               exit 0
