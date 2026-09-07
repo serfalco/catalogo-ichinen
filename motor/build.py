@@ -13,7 +13,7 @@ Variables de entorno:
   BUSCAR_TAPAS   "1" para activar búsqueda de tapas, "0" para placeholder en todos.
   LIMITE_TAPAS   (opcional) máximo de búsquedas nuevas por corrida, para no demorar de más.
 """
-import os, sys, argparse, urllib.request, shutil, time, subprocess
+import os, sys, argparse, urllib.request, shutil, time, subprocess, json
 import socket
 
 # Los runners de GitHub no tienen IPv6. Si el dominio resuelve a IPv6 (registro AAAA),
@@ -33,6 +33,33 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # raíz del 
 SALIDA = os.path.join(RAIZ, "docs")        # GitHub Pages puede servir desde /docs
 DIR_TAPAS = os.path.join(SALIDA, "tapas")
 REGISTRO_FALLIDOS = os.path.join(RAIZ, ".tapas_fallidas.json")
+# Cuántos ISBN quedaron sin resolver. Lo lee el workflow para decidir si vale la
+# pena reconstruir aunque el Excel no haya cambiado: sin esto, un libro cuya API
+# no contestó espera a la próxima carga de Excel, que puede ser dentro de meses.
+REGISTRO_PENDIENTES = os.path.join(RAIZ, ".pendientes")
+
+
+def _anotar_pendientes(libros):
+    """Deja en .pendientes cuántos ISBN siguen sin tapa ni veredicto.
+
+    Un ISBN está pendiente cuando tiene código válido, no consiguió tapa y
+    tampoco figura como fallido: es el caso de la API que no contestó. El
+    workflow usa este número para reconstruir la semana siguiente aunque el
+    Excel esté igual, y así el catálogo mejora solo hasta que no quede nada.
+    """
+    try:
+        fallidos = json.load(open(REGISTRO_FALLIDOS)) if os.path.exists(REGISTRO_FALLIDOS) else {}
+        if isinstance(fallidos, list):
+            fallidos = {str(i): "" for i in fallidos}
+        pendientes = {l["isbn"] for l in libros
+                      if l.get("isbn") and not l.get("tapa_url") and l["isbn"] not in fallidos}
+        open(REGISTRO_PENDIENTES, "w").write(f"{len(pendientes)}\n")
+        if pendientes:
+            print(f"  quedan {len(pendientes)} ISBN pendientes de reintento; "
+                  f"la corrida semanal los va a volver a probar sola.")
+    except Exception as e:
+        # No es crítico: si falla, se pierde el reintento automático, no el sitio.
+        print(f"  (no se pudo anotar el archivo de pendientes: {e})")
 
 
 def _descargar_con_curl(url, destino):
@@ -171,6 +198,7 @@ def main():
             print(f"  ATENCION: {stats['errores']} ISBN quedaron sin resolver porque la API "
                   f"no contesto (cuota o red). No se dieron por perdidos; se reintentan "
                   f"en la proxima corrida.")
+        _anotar_pendientes(libros)
     else:
         print("Búsqueda de tapas desactivada (BUSCAR_TAPAS != 1). Todos con placeholder.")
 
