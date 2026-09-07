@@ -97,6 +97,7 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
   letter-spacing:1px;text-transform:uppercase;}
 .rel{border-top:1px solid var(--linea);padding:26px 0 10px;}
 .rel h2{font-size:1rem;color:var(--bordo);}
+.estante-nota{color:var(--suave);font-size:.95rem;margin:6px 0 0;max-width:60ch;}
 .rel .grid{padding:14px 0 24px;}
 
 /* footer */
