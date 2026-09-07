@@ -343,15 +343,48 @@ def _tarjeta_html(l):
 
 
 # ---------------------------------------------------------------------------
+def desambiguar_titulos(libros):
+    """Evita que varios ejemplares compartan el mismo <title>.
+
+    Cuando dos o mas fichas tienen igual titulo y autor, el <title> de todas
+    queda identico y Google las trata como duplicadas (elige una y descarta el
+    resto). Le agregamos editorial y/o anio hasta distinguirlas, y si aun asi
+    coinciden, un numero de ejemplar. Guarda el sufijo en libro["desamb"].
+    """
+    grupos = {}
+    for l in libros:
+        clave = (l["titulo"].strip().lower(),
+                 l["autor"].strip().lower() if l["autor_ok"] else "")
+        grupos.setdefault(clave, []).append(l)
+
+    for grupo in grupos.values():
+        if len(grupo) == 1:
+            grupo[0]["desamb"] = ""
+            continue
+        usados = {}
+        for l in grupo:
+            partes = [p for p in (l["editorial"], l["anio"]) if p]
+            base = " (" + ", ".join(partes) + ")" if partes else ""
+            n = usados.get(base, 0) + 1
+            usados[base] = n
+            if n > 1:
+                base = f"{base[:-1]}, ejemplar {n})" if base else f" (ejemplar {n})"
+            l["desamb"] = base
+    return libros
+
+
 def generar_pagina_libro(libro, autores_idx):
     au_txt = autor_texto(libro)
-    titulo_seo = (f'{libro["titulo"]} — {au_txt} | Librería Ichinén' if au_txt
-                  else f'{libro["titulo"]} — libro usado | Librería Ichinén')
+    tit_seo = libro["titulo"] + libro.get("desamb", "")
+    titulo_seo = (f'{tit_seo} — {au_txt} | Librería Ichinén' if au_txt
+                  else f'{tit_seo} — libro usado | Librería Ichinén')
     desc = f'{libro["titulo"]}'
     if libro["autor_ok"]:
         desc += f' de {libro["autor"]}'
     if libro["editorial"]:
         desc += f', editorial {libro["editorial"]}'
+    if libro["anio"]:
+        desc += f' ({libro["anio"]})'
     desc += '. Libro usado disponible en Librería Ichinén, Villa Urquiza, CABA. Consultá por WhatsApp.'
     canonical = f'{DOMINIO}/libro/{libro["slug"]}.html'
     cat_slug = _slug_cat(libro["categoria"])
@@ -627,6 +660,8 @@ def generar_sitio(libros, salida):
         shutil.rmtree(salida)
     for sub in ("libro", "css", "js", "ph", "categoria", "autor"):
         os.makedirs(os.path.join(salida, sub))
+
+    desambiguar_titulos(libros)
 
     categorias = sorted({l["categoria"] for l in libros},
                         key=lambda c: (c == "Otros", c))  # Otros al final
