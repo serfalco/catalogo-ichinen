@@ -28,7 +28,7 @@ necesita trabajo humano.
 Todo lo consultado se cachea en `.enriquecido.json` (raíz del repo), así cada
 corrida solo pregunta por los libros nuevos.
 """
-import os, json, time, re, unicodedata, urllib.request
+import os, json, time, re, unicodedata, urllib.request, urllib.error
 
 UA = {"User-Agent": "Mozilla/5.0 (IchinenCatalog; +https://ichinen.com.ar)"}
 TIMEOUT = 12
@@ -41,12 +41,21 @@ def _norm(s):
     return re.sub(r"[^a-z0-9 ]", " ", s).strip()
 
 
+class ApiNoDisponible(Exception):
+    """La API no contestó (cuota, error del servidor, red). No es "no existe"."""
+
+
 def _get_json(url):
+    """JSON, o None si la API dijo que no hay nada. Lanza ApiNoDisponible si falló."""
     try:
         r = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT)
         return json.load(r)
-    except Exception:
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 402, 403, 429) or e.code >= 500:
+            raise ApiNoDisponible(f"HTTP {e.code}") from None
         return None
+    except Exception:
+        raise ApiNoDisponible("sin respuesta") from None
 
 
 def _anio(texto):
@@ -88,7 +97,11 @@ def _googlebooks(isbn):
 
 
 def consultar(isbn):
-    """Combina ambas fuentes. Open Library primero (mejor cobertura de temas)."""
+    """Combina ambas fuentes. Open Library primero (mejor cobertura de temas).
+
+    Si alguna API no contestó, propaga ApiNoDisponible: el resultado vacío no
+    se guarda en el caché, porque no sabemos si el libro está o no.
+    """
     a = _openlibrary(isbn)
     b = _googlebooks(isbn)
     if not a and not b:
@@ -165,7 +178,7 @@ def enriquecer(libros, cache_path, limite=None, pausa=0.2):
         except Exception:
             cache = {}
 
-    consultas, stats = 0, {}
+    consultas, fallas, stats = 0, 0, {}
     for l in libros:
         isbn = l.get("isbn")
         if not isbn:
@@ -174,7 +187,13 @@ def enriquecer(libros, cache_path, limite=None, pausa=0.2):
             if limite is not None and consultas >= limite:
                 continue
             consultas += 1
-            cache[isbn] = consultar(isbn) or {}
+            try:
+                cache[isbn] = consultar(isbn) or {}
+            except ApiNoDisponible:
+                # No se cachea: se vuelve a preguntar en la próxima corrida.
+                fallas += 1
+                time.sleep(pausa)
+                continue
             time.sleep(pausa)
         for campo in aplicar(l, cache[isbn]):
             stats[campo] = stats.get(campo, 0) + 1
@@ -182,4 +201,4 @@ def enriquecer(libros, cache_path, limite=None, pausa=0.2):
     json.dump(cache, open(cache_path, "w", encoding="utf-8"), ensure_ascii=False)
     conocidos = sum(1 for v in cache.values() if v)
     return {"consultas_nuevas": consultas, "en_cache": len(cache),
-            "con_datos": conocidos, "campos": stats}
+            "con_datos": conocidos, "campos": stats, "fallas_api": fallas}

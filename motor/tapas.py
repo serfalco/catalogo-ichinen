@@ -14,6 +14,7 @@ Las tapas cacheadas se re-verifican contra el título por si quedaron cruces vie
 Cobertura parcial esperable (usados argentinos); el resto queda placeholder.
 """
 import os, json, time, re, unicodedata, urllib.request, urllib.error
+import datetime
 
 UA = {"User-Agent": "Mozilla/5.0 (IchinenCatalog; +https://ichinen.com.ar)"}
 TIMEOUT = 12
@@ -42,12 +43,31 @@ def _coincide(titulo_excel, titulo_api):
     return len(comunes) / menor >= 0.5 or len(comunes) >= 2
 
 # --- consultas a las APIs -----------------------------------------------------
+class ApiNoDisponible(Exception):
+    """La API no contestó: cuota agotada, error del servidor o red caída.
+
+    Es distinto de "el libro no está en la base". Si se confunden, una corrida
+    con la cuota de Google agotada marca cientos de ISBN como fallidos para
+    siempre, y esos libros no vuelven a intentarse nunca.
+    """
+
+
 def _get_json(url):
+    """Devuelve el JSON, o None si la API respondió que no hay nada.
+
+    Lanza ApiNoDisponible cuando el problema es de la API, no del libro.
+    """
     try:
         r = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT)
         return json.load(r)
-    except Exception:
+    except urllib.error.HTTPError as e:
+        # 429 = cuota. 401/403 = credencial o bloqueo. 5xx = el servidor falló.
+        if e.code in (401, 402, 403, 429) or e.code >= 500:
+            raise ApiNoDisponible(f"HTTP {e.code}") from None
         return None
+    except Exception:
+        # Timeout, DNS, conexión cortada: tampoco es culpa del libro.
+        raise ApiNoDisponible("sin respuesta") from None
 
 def _descargar(url, destino):
     try:
@@ -91,23 +111,58 @@ def _openlibrary(isbn):
     return (url, titulo) if url else (None, None)
 
 def _buscar_una(isbn, titulo_excel, destino):
-    """Intenta bajar una tapa que COINCIDA con el título. True si lo logró."""
+    """Busca una tapa que COINCIDA con el título.
+
+    Devuelve "ok" si la bajó, "sin_tapa" si las APIs contestaron y no la tienen,
+    y "error" si alguna no contestó. Solo "sin_tapa" justifica dar el ISBN por
+    perdido; "error" se reintenta en la próxima corrida.
+    """
+    hubo_error = False
     for fuente in (_google, _openlibrary):
-        url, titulo_api = fuente(isbn)
+        try:
+            url, titulo_api = fuente(isbn)
+        except ApiNoDisponible:
+            hubo_error = True
+            continue
         if url and _coincide(titulo_excel, titulo_api):
             if _descargar(url, destino):
-                return True
-    return False
+                return "ok"
+    return "error" if hubo_error else "sin_tapa"
 
 # --- proceso principal --------------------------------------------------------
-def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15):
+def _hoy():
+    return datetime.date.today().isoformat()
+
+
+def _caducado(fecha, dias):
+    """True si el fallo es viejo y conviene reintentarlo."""
+    try:
+        d = datetime.date.fromisoformat(fecha)
+    except Exception:
+        return True
+    return (datetime.date.today() - d).days >= dias
+
+
+def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15,
+                 dias_reintento=120):
+    """Busca tapas faltantes.
+
+    `registro_fallidos` guarda {isbn: fecha del último intento fallido}. Un fallo
+    caduca a los `dias_reintento` días: las APIs incorporan registros con el
+    tiempo, y un libro que hoy no está puede estar en unos meses. Se acepta
+    también el formato viejo (lista simple), estampándolo con la fecha de hoy.
+    """
     os.makedirs(dir_tapas, exist_ok=True)
-    fallidos = set()
+    fallidos = {}
     if os.path.exists(registro_fallidos):
         try:
-            fallidos = set(json.load(open(registro_fallidos)))
+            crudo = json.load(open(registro_fallidos))
+            if isinstance(crudo, list):
+                fallidos = {str(i): _hoy() for i in crudo}
+            elif isinstance(crudo, dict):
+                fallidos = {str(k): str(v) for k, v in crudo.items()}
         except Exception:
-            fallidos = set()
+            fallidos = {}
 
     # Registro de tapas ya verificadas (para no re-chequear las buenas cada vez)
     reg_ok_path = os.path.join(dir_tapas, ".verificadas.json")
@@ -118,7 +173,7 @@ def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15):
         except Exception:
             verificadas = set()
 
-    nuevas, cacheadas, sin_tapa, intentos, descartadas = 0, 0, 0, 0, 0
+    nuevas, cacheadas, sin_tapa, intentos, descartadas, errores = 0, 0, 0, 0, 0, 0
     for l in libros:
         isbn = l.get("isbn")
         if not isbn:
@@ -138,36 +193,54 @@ def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15):
                 cacheadas += 1
                 continue
             intentos += 1
-            _, titulo_api = _google(isbn)
-            if titulo_api is None:
-                _, titulo_api = _openlibrary(isbn)
+            titulo_api, falla = None, False
+            for fuente in (_google, _openlibrary):
+                try:
+                    _, titulo_api = fuente(isbn)
+                except ApiNoDisponible:
+                    falla = True
+                    titulo_api = None
+                if titulo_api:
+                    break
             if titulo_api and _coincide(l["titulo"], titulo_api):
                 verificadas.add(isbn)
                 l["tapa_url"] = rel
                 cacheadas += 1
+            elif falla:
+                # La API no contestó. NO se borra la tapa: no sabemos si está
+                # cruzada. Sin esto, una corrida con la cuota agotada borraba
+                # tapas buenas que ya habían costado una consulta cada una.
+                l["tapa_url"] = rel
+                cacheadas += 1
+                errores += 1
             else:
                 os.remove(destino)        # tapa cruzada: la borramos
-                fallidos.add(isbn)
+                fallidos[isbn] = _hoy()
                 descartadas += 1
             time.sleep(pausa)
             continue
 
-        if isbn in fallidos:
+        if isbn in fallidos and not _caducado(fallidos[isbn], dias_reintento):
             sin_tapa += 1
             continue
         if limite is not None and intentos >= limite:
             continue
         intentos += 1
-        if _buscar_una(isbn, l["titulo"], destino):
+        resultado = _buscar_una(isbn, l["titulo"], destino)
+        if resultado == "ok":
             verificadas.add(isbn)
             l["tapa_url"] = rel
             nuevas += 1
-        else:
-            fallidos.add(isbn)
+        elif resultado == "sin_tapa":
+            fallidos[isbn] = _hoy()
             sin_tapa += 1
+        else:
+            # error de API: se reintenta en la próxima corrida
+            errores += 1
         time.sleep(pausa)
 
-    json.dump(sorted(fallidos), open(registro_fallidos, "w"))
+    json.dump(dict(sorted(fallidos.items())), open(registro_fallidos, "w"),
+              ensure_ascii=False, indent=0)
     json.dump(sorted(verificadas), open(reg_ok_path, "w"))
     return {"nuevas": nuevas, "cacheadas": cacheadas, "sin_tapa": sin_tapa,
-            "intentos": intentos, "descartadas": descartadas}
+            "intentos": intentos, "descartadas": descartadas, "errores": errores}

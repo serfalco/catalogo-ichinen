@@ -50,11 +50,35 @@ def wa_link(titulo, autor):
 CAT_SIN_AUTOR = {"Historieta y cómic"}
 
 
-def indexable(libro):
-    """¿Se le ofrece esta ficha a Google? Ver nota de criterio arriba."""
+# Una ficha sin ISBN y sin tapa es solo título, editorial y año: no hay API que
+# la complete ni imagen que mostrar, y es indistinguible de otras mil. Google ya
+# las trata así — son buena parte de las "descubiertas: actualmente sin indexar".
+# En vez de insistir, se las saca del índice y se las agrupa en el Estante de
+# sorpresas, de donde vuelven solas la semana que consiguen ISBN o tapa.
+def _tiene_con_que(libro):
+    return bool(libro.get("isbn")) or bool(libro.get("tapa_url"))
+
+
+def indexable(libro, exigir_material=True):
+    """¿Se le ofrece esta ficha a Google?
+
+    `exigir_material` se apaga cuando la corrida no buscó tapas: sin ese dato el
+    criterio dejaría el catálogo entero fuera del índice por un motivo falso.
+    """
+    if exigir_material and not _tiene_con_que(libro):
+        return False
     if libro.get("autor_ok"):
         return True
     return libro.get("categoria") in CAT_SIN_AUTOR
+
+
+def motivo_incompleto(libro):
+    """Por qué esta ficha está en el estante. Ordena el trabajo de completarla."""
+    if not libro.get("isbn") and not libro.get("tapa_url"):
+        return "Sin ISBN ni tapa"
+    if not libro.get("autor_ok"):
+        return "Sin autor confirmado"
+    return "Sin datos suficientes"
 
 
 def autor_texto(libro):
@@ -236,6 +260,7 @@ h1,h2,h3{font-family:'Cinzel',serif;line-height:1.2;margin:0 0 .4em;font-weight:
   letter-spacing:1px;text-transform:uppercase;}
 .rel{border-top:1px solid var(--linea);padding:26px 0 10px;}
 .rel h2{font-size:1rem;color:var(--bordo);}
+.estante-nota{color:var(--suave);font-size:.95rem;margin:6px 0 0;max-width:60ch;}
 .rel .grid{padding:14px 0 24px;}
 
 /* footer */
@@ -343,6 +368,40 @@ def _tarjeta_html(l):
 
 
 # ---------------------------------------------------------------------------
+_IDIOMA_PROPIO = {"español", "castellano", "espanol"}
+_CODIGO_IDIOMA = {"español": "es", "castellano": "es", "espanol": "es",
+                  "inglés": "en", "ingles": "en", "francés": "fr", "frances": "fr",
+                  "italiano": "it", "portugués": "pt", "portugues": "pt",
+                  "alemán": "de", "aleman": "de", "latín": "la", "latin": "la",
+                  "catalán": "ca", "catalan": "ca"}
+
+
+def idioma_codigo(libro):
+    """Código ISO del idioma del libro. Por defecto español."""
+    return _CODIGO_IDIOMA.get((libro.get("idioma") or "").strip().lower(), "es")
+
+
+def _medidas(libro):
+    """'18 × 12 cm' si están los dos lados, sino ''."""
+    alto, ancho = (libro.get("alto") or "").strip(), (libro.get("ancho") or "").strip()
+    if not (alto and ancho):
+        return ""
+    unidad = (libro.get("unidad_medida") or "cm").strip()
+    return f"{alto} × {ancho} {unidad}"
+
+
+def _edicion_real(libro):
+    """La edición solo cuando dice algo: casi todo el Excel trae '1' por defecto."""
+    e = (libro.get("edicion") or "").strip()
+    return e if e.isdigit() and 2 <= int(e) <= 9 else ""
+
+
+def _idioma_visible(libro):
+    """El idioma se muestra solo si NO es español: decirlo en 4.200 fichas no informa."""
+    i = (libro.get("idioma") or "").strip()
+    return "" if i.lower() in _IDIOMA_PROPIO or not i else i
+
+
 def desambiguar_titulos(libros):
     """Evita que varios ejemplares compartan el mismo <title>.
 
@@ -402,8 +461,13 @@ def generar_pagina_libro(libro, autores_idx):
         "name": libro["titulo"],
         "url": canonical,
         "bookFormat": "https://schema.org/Paperback",
-        "inLanguage": "es",
+        # El idioma estaba fijo en "es" para todos; hay 300 libros que no lo son.
+        "inLanguage": idioma_codigo(libro),
     }
+    if _edicion_real(libro):
+        book["bookEdition"] = _edicion_real(libro)
+    if libro.get("traductor"):
+        book["translator"] = {"@type": "Person", "name": libro["traductor"]}
     if libro["autor_ok"]:
         book["author"] = {"@type": "Person", "name": libro["autor"]}
     if libro["editorial"]:
@@ -434,9 +498,16 @@ def generar_pagina_libro(libro, autores_idx):
     # --- Ficha ------------------------------------------------------------
     filas = [("Categoría", libro["categoria"])]
     if libro["editorial"]: filas.append(("Editorial", libro["editorial"]))
+    if libro.get("coleccion"): filas.append(("Colección", libro["coleccion"]))
+    if libro.get("serie"): filas.append(("Serie", libro["serie"]))
     if libro["anio"]: filas.append(("Año", libro["anio"]))
+    if _edicion_real(libro): filas.append(("Edición", _edicion_real(libro) + "ª"))
+    if libro.get("traductor"): filas.append(("Traducción", libro["traductor"]))
+    if _idioma_visible(libro): filas.append(("Idioma", _idioma_visible(libro)))
     if libro["paginas"] and libro["paginas"] not in ("0", ""): filas.append(("Páginas", libro["paginas"]))
     if libro["tapa"]: filas.append(("Encuadernación", libro["tapa"]))
+    if libro.get("formato"): filas.append(("Formato", libro["formato"]))
+    if _medidas(libro): filas.append(("Medidas", _medidas(libro)))
     if libro["isbn"]: filas.append(("ISBN", libro["isbn"]))
     ficha = "".join(f'<div><span class="k">{esc(k)}</span><span>{esc(v)}</span></div>' for k, v in filas)
 
@@ -460,7 +531,7 @@ def generar_pagina_libro(libro, autores_idx):
                  f'← Ver todo {esc(libro["categoria"])}</a></p></section>')
 
     og_img = (DOMINIO + libro["tapa_url"]) if libro.get("tapa_url") else None
-    robots = ("index,follow,max-image-preview:large" if indexable(libro)
+    robots = ("index,follow,max-image-preview:large" if libro.get("_en_indice", True)
               else "noindex,follow")
 
     body = f"""{_migas(migas)}
@@ -523,7 +594,7 @@ def generar_pagina_listado(titulo_h1, intro, libros, canonical, migas, titulo_se
     return _head(titulo_seo, desc, canonical, extra, robots=robots) + body + _FOOTER
 
 
-def generar_index(libros, categorias, autores_orden):
+def generar_index(libros, categorias, autores_orden, n_estante=0):
     titulo = "Catálogo — Librería Ichinén | Libros usados en Villa Urquiza, CABA"
     desc = (f"Explorá {len(libros)} libros usados de Librería Ichinén en Villa Urquiza, CABA. "
             f"Literatura, ensayo, poesía, teatro y más. Buscá por título o autor y consultá por WhatsApp.")
@@ -549,6 +620,14 @@ def generar_index(libros, categorias, autores_orden):
               "about": {"@id": ID_LIBRERIA}}
     extra = f'<script type="application/ld+json">{json.dumps(schema, ensure_ascii=False)}</script>'
 
+    estante_link = ""
+    if n_estante:
+        estante_link = (
+            '<h2>Estante de sorpresas</h2>'
+            f'<p class="estante-nota">{n_estante} libros en proceso de clasificación y '
+            'prepublicación. Están en el local aunque todavía no en la vidriera: '
+            '<a href="/estante-de-sorpresas/">revisá el estante</a>.</p>')
+
     body = f"""
 <main class="wrap">
   <section class="buscador">
@@ -565,6 +644,7 @@ def generar_index(libros, categorias, autores_orden):
     <div class="lista">{cats_links}</div>
     <h2>Autores con más libros en el catálogo</h2>
     <div class="lista">{aut_links}</div>
+    {estante_link}
   </div>
 </main>
 <script src="/js/catalogo.js" defer></script>
@@ -663,6 +743,11 @@ def generar_sitio(libros, salida):
 
     desambiguar_titulos(libros)
 
+    # Si la corrida no buscó tapas, no se puede exigir "tapa o ISBN" sin mandar
+    # medio catálogo al estante por un motivo que no es real.
+    hubo_tapas = any(l.get("tapa_url") for l in libros)
+    en_indice = lambda l: indexable(l, exigir_material=hubo_tapas)
+
     categorias = sorted({l["categoria"] for l in libros},
                         key=lambda c: (c == "Otros", c))  # Otros al final
     autores_idx = _indice_autores(libros)
@@ -684,9 +769,12 @@ def generar_sitio(libros, salida):
     json.dump(datos, open(os.path.join(salida, "datos.json"), "w"),
               ensure_ascii=False, separators=(",", ":"))
 
+    n_estante = sum(1 for l in libros if not en_indice(l))
     open(os.path.join(salida, "index.html"), "w").write(
-        generar_index(libros, categorias, autores_orden))
+        generar_index(libros, categorias, autores_orden, n_estante=n_estante))
 
+    for l in libros:
+        l["_en_indice"] = en_indice(l)
     for l in libros:
         open(os.path.join(salida, "libro", f'{l["slug"]}.html'), "w").write(
             generar_pagina_libro(l, autores_idx))
@@ -755,6 +843,47 @@ def generar_sitio(libros, salida):
             if i == 1:
                 urls_listas.append((url, "0.7"))
 
+    # --- Estante de sorpresas ---------------------------------------------
+    # Los libros que quedaron fuera del índice siguen en la casa: se pueden
+    # navegar, aparecen en el buscador del catálogo y se consultan por WhatsApp.
+    # Lo único que cambia es que no se le ofrecen a Google mientras estén
+    # incompletos. Vuelven solos a las listas normales la semana que consiguen
+    # ISBN o tapa: el criterio se recalcula en cada corrida, no hay lista fija.
+    en_estante = [l for l in libros if not l.get("_en_indice", True)]
+    if en_estante:
+        os.makedirs(os.path.join(salida, "estante-de-sorpresas"), exist_ok=True)
+        paginas = _paginar(en_estante, POR_PAGINA)
+        intro_estante = (
+            f"{len(en_estante)} libros en proceso de clasificación y prepublicación. "
+            f"Están en el local y se pueden consultar igual: lo que falta es terminar de "
+            f"cargarles los datos —el ISBN, la tapa, a veces el autor— antes de sumarlos "
+            f"a la vidriera del catálogo. Si buscabas alguno en particular, escribinos por "
+            f"WhatsApp y lo revisamos en el estante.")
+        for i, lote in enumerate(paginas, start=1):
+            url = ("/estante-de-sorpresas/" if i == 1
+                   else f"/estante-de-sorpresas/{i}.html")
+            suf = "" if i == 1 else f" — página {i}"
+            html_pag = generar_pagina_listado(
+                titulo_h1=f"Estante de sorpresas{suf}",
+                intro=intro_estante,
+                libros=lote, canonical=DOMINIO + url,
+                migas=[("Catálogo", "/"), (f"Estante de sorpresas{suf}", None)],
+                titulo_seo=f"Estante de sorpresas{suf} | Librería Ichinén",
+                desc=(f"{len(en_estante)} libros usados en proceso de clasificación en "
+                      f"Librería Ichinén, Villa Urquiza, CABA."),
+                pagina=i, total_paginas=len(paginas),
+                url_pagina=lambda n: ("/estante-de-sorpresas/" if n == 1
+                                      else f"/estante-de-sorpresas/{n}.html"),
+                # Todo el estante queda fuera del índice, incluida esta portada:
+                # una lista de fichas incompletas es, ella misma, una página
+                # pobre. El "follow" es deliberado: mantiene las fichas
+                # alcanzables para el rastreador, que es la condición para que
+                # puedan volver cuando mejoren.
+                robots="noindex,follow")
+            destino = (os.path.join(salida, "estante-de-sorpresas", "index.html") if i == 1
+                       else os.path.join(salida, "estante-de-sorpresas", f"{i}.html"))
+            open(destino, "w").write(html_pag)
+
     # --- sitemaps ---------------------------------------------------------
     hoy = date.today().isoformat()
     NS = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
@@ -771,8 +900,8 @@ def generar_sitio(libros, salida):
     filas = []
     n_indexables = 0
     for l in libros:
-        if not indexable(l):
-            continue          # las fichas sin dato confiable no se le ofrecen a Google
+        if not l.get("_en_indice", True):
+            continue          # las del estante no se le ofrecen a Google
         n_indexables += 1
         img = ""
         if l.get("tapa_url"):

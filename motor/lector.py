@@ -82,6 +82,20 @@ def leer_excel(path: str):
             "tapa": _celda(r, "BOOK_COVER"),
             "paginas": _celda(r, "PAGES_NUMBER"),
             "coleccion": _celda(r, "BOOK_COLLECTION"),
+            # Datos que el Excel ya trae y hasta ahora se descartaban. Solo se
+            # toman los que son información real del ejemplar: los campos que
+            # Mercado Libre completa por defecto para todos (material de tapa
+            # "Papel", "con índice: Sí", peso 120 g) se dejan afuera a
+            # propósito, porque repetir un valor por defecto en 4.500 fichas no
+            # informa nada y ensucia la página.
+            "serie": _celda(r, "BOOK_SERIE"),
+            "traductor": _celda(r, "TRANSLATORS"),
+            "idioma": _celda(r, "LANGUAGE"),
+            "formato": _celda(r, "BOOK_SIZE"),
+            "alto": _celda(r, "HEIGHT"),
+            "ancho": _celda(r, "WIDTH"),
+            "unidad_medida": _celda(r, "HEIGHT_UNIT") or "cm",
+            "edicion": _celda(r, "BOOK_EDITION"),
             "faltantes": faltantes,
             # Campos crudos guardados para poder reclasificar después del
             # enriquecimiento, cuando aparecen los temas que devuelve la API.

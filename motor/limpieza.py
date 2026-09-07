@@ -354,11 +354,60 @@ def limpiar_editorial(e: str):
         e = _title_es(e)
     return e
 
+def _dv_isbn13(doce: str) -> str:
+    """Dígito verificador de un ISBN-13 a partir de sus primeros 12 dígitos."""
+    suma = sum((1 if i % 2 == 0 else 3) * int(d) for i, d in enumerate(doce))
+    return str((10 - suma % 10) % 10)
+
+
+def _isbn10_correcto(d: str) -> bool:
+    """Valida el dígito verificador de un ISBN-10 (el último puede ser X)."""
+    if len(d) != 10:
+        return False
+    total = 0
+    for i, c in enumerate(d[:9]):
+        if not c.isdigit():
+            return False
+        total += (10 - i) * int(c)
+    ultimo = d[9].upper()
+    if ultimo == "X":
+        total += 10
+    elif ultimo.isdigit():
+        total += int(ultimo)
+    else:
+        return False
+    return total % 11 == 0
+
+
 def isbn_valido(g: str) -> str:
-    """Devuelve ISBN-13 si parece válido, sino ''. Para buscar tapas."""
+    """Devuelve ISBN-13 si parece válido, sino ''. Para buscar tapas.
+
+    El Excel de Mercado Libre trae el GTIN en tres formas: ISBN-13 tal cual,
+    ISBN-10 (los libros anteriores a 2007, que en una librería de usados son
+    muchos) y cualquiera de los dos con ceros a la izquierda que agrega Excel
+    al tratar la celda como número. Las tres se aceptan; el ISBN-10 se convierte
+    a 13 validando antes su dígito verificador, para no inventar códigos.
+
+    Lo que NO es ISBN se sigue descartando: códigos 977 (publicaciones
+    periódicas), códigos internos de barras y celdas en cero.
+    """
     d = re.sub(r"[^0-9Xx]", "", (g or ""))
+
+    # Ceros de relleno de Excel: solo se quitan si dejan un código de largo útil.
+    if len(d) > 13:
+        sin_ceros = d.lstrip("0")
+        if len(sin_ceros) in (10, 13):
+            d = sin_ceros
+    if len(d) > 10:
+        sin_ceros = d.lstrip("0")
+        if len(sin_ceros) == 10:
+            d = sin_ceros
+
     if len(d) == 13 and d.startswith(("978", "979")):
         return d
+    if len(d) == 10 and _isbn10_correcto(d):
+        base = "978" + d[:9]
+        return base + _dv_isbn13(base)
     return ""
 
 # --- Slug para URL ------------------------------------------------------------

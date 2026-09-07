@@ -167,6 +167,10 @@ def main():
         stats = buscar_tapas(libros, cache_tmp, REGISTRO_FALLIDOS, limite=limite)
         print(f"  tapas: {stats['nuevas']} nuevas, {stats['cacheadas']} cacheadas, "
               f"{stats['sin_tapa']} sin tapa")
+        if stats.get("errores"):
+            print(f"  ATENCION: {stats['errores']} ISBN quedaron sin resolver porque la API "
+                  f"no contesto (cuota o red). No se dieron por perdidos; se reintentan "
+                  f"en la proxima corrida.")
     else:
         print("Búsqueda de tapas desactivada (BUSCAR_TAPAS != 1). Todos con placeholder.")
 
