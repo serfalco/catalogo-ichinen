@@ -17,7 +17,7 @@ Criterio de indexación (importante):
   buscables para el visitante; simplemente no se ofrecen al índice. Es reversible:
   cuando el dato se corrige, la ficha vuelve a entrar sola en la próxima corrida.
 """
-import os, json, html, shutil
+import os, json, html, shutil, collections
 from datetime import date
 from urllib.parse import quote
 
@@ -594,7 +594,8 @@ def generar_pagina_listado(titulo_h1, intro, libros, canonical, migas, titulo_se
     return _head(titulo_seo, desc, canonical, extra, robots=robots) + body + _FOOTER
 
 
-def generar_index(libros, categorias, autores_orden, n_estante=0):
+def generar_index(libros, categorias, autores_orden, n_estante=0,
+                  editoriales_idx=None, decadas=None):
     titulo = "Catálogo — Librería Ichinén | Libros usados en Villa Urquiza, CABA"
     desc = (f"Explorá {len(libros)} libros usados de Librería Ichinén en Villa Urquiza, CABA. "
             f"Literatura, ensayo, poesía, teatro y más. Buscá por título o autor y consultá por WhatsApp.")
@@ -628,6 +629,19 @@ def generar_index(libros, categorias, autores_orden, n_estante=0):
             'prepublicación. Están en el local aunque todavía no en la vidriera: '
             '<a href="/estante-de-sorpresas/">revisá el estante</a>.</p>')
 
+    # Sin estos enlaces las páginas de época quedarían solo en el sitemap, que
+    # es exactamente el problema de fichas huérfanas que arreglamos en agosto.
+    epoca_links = ""
+    if decadas or editoriales_idx:
+        dec = "".join(f'<a href="/ediciones-antiguas/{c}/">{esc(e.replace("Ediciones ", ""))} <b>{len(ls)}</b></a>'
+                      for e, c, ls in (decadas or []))
+        eds = "".join(f'<a href="/editorial/{d["slug"]}/">{esc(n)} <b>{d["antiguos"]}</b></a>'
+                      for n, d in sorted((editoriales_idx or {}).items(),
+                                         key=lambda kv: (-kv[1]["antiguos"], kv[0]))[:20])
+        epoca_links = (f'<h2><a href="/ediciones-antiguas/">Ediciones antiguas</a></h2>'
+                       f'<div class="lista">{dec}</div>'
+                       f'<h2>Sellos de época</h2><div class="lista">{eds}</div>')
+
     body = f"""
 <main class="wrap">
   <section class="buscador">
@@ -644,6 +658,7 @@ def generar_index(libros, categorias, autores_orden, n_estante=0):
     <div class="lista">{cats_links}</div>
     <h2>Autores con más libros en el catálogo</h2>
     <div class="lista">{aut_links}</div>
+    {epoca_links}
     {estante_link}
   </div>
 </main>
@@ -731,6 +746,81 @@ def _indice_autores(libros):
     return idx
 
 
+# --- editoriales y épocas -----------------------------------------------------
+# Por qué un criterio distinto al de autores y categorías:
+#
+# Las páginas de categoría fracasaron —20 impresiones en dos semanas— porque
+# nadie busca nuestra taxonomía interna ("Narrativa", "Ensayo y no ficción").
+# Repetir eso con 96 páginas de editorial sería el mismo error a mayor escala.
+#
+# Pero sí existe gente que busca por SELLO cuando el sello es de época: quien
+# busca "Bruguera" o "Centro Editor de América Latina" está buscando una edición
+# vieja concreta, no un libro cualquiera. En cambio nadie busca "Gradifco"
+# (307 libros, 1 anterior a 1990: es una reimprentadora moderna).
+#
+# De ahí el criterio: una editorial merece página propia si tiene fondo antiguo
+# real, no si tiene volumen. Y es justo el material donde el catálogo ya rankea
+# mejor, porque casi nadie más lo tiene.
+MIN_LIBROS_EDITORIAL = 12
+MIN_ANTIGUOS_EDITORIAL = 10
+ANIO_ANTIGUO = 1990          # frontera de "edición de época"
+MIN_LIBROS_DECADA = 25       # una década con menos no justifica página
+
+
+def _anio_int(libro):
+    a = str(libro.get("anio") or "")
+    return int(a) if a.isdigit() else 0
+
+
+def es_antiguo(libro):
+    a = _anio_int(libro)
+    return 0 < a < ANIO_ANTIGUO
+
+
+def _indice_editoriales(libros):
+    """Editoriales con fondo antiguo real: nombre -> {slug, libros, antiguos}."""
+    from limpieza import slugify
+    por_ed = {}
+    for l in libros:
+        if l.get("editorial"):
+            por_ed.setdefault(l["editorial"], []).append(l)
+    idx, usados = {}, set()
+    for nombre, ls in sorted(por_ed.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        antiguos = sum(1 for x in ls if es_antiguo(x))
+        if len(ls) < MIN_LIBROS_EDITORIAL or antiguos < MIN_ANTIGUOS_EDITORIAL:
+            continue
+        base = slugify(nombre) or "editorial"
+        slug, n = base, 2
+        while slug in usados:
+            slug, n = f"{base}-{n}", n + 1
+        usados.add(slug)
+        idx[nombre] = {"slug": slug, "libros": ls, "antiguos": antiguos}
+    return idx
+
+
+def _indice_decadas(libros):
+    """Décadas de edición anteriores a 1990, con suficientes libros. [(etiqueta, slug, libros)]"""
+    por_dec = {}
+    for l in libros:
+        if not es_antiguo(l):
+            continue
+        a = _anio_int(l)
+        # Todo lo anterior a 1940 va junto: son puñados sueltos que solos no
+        # dan para una página, pero juntos son la joya del catálogo.
+        clave = "anteriores-a-1940" if a < 1940 else str(a // 10 * 10)
+        por_dec.setdefault(clave, []).append(l)
+    salida = []
+    for clave, ls in por_dec.items():
+        if len(ls) < MIN_LIBROS_DECADA:
+            continue
+        etiqueta = ("Ediciones anteriores a 1940" if clave == "anteriores-a-1940"
+                    else f"Ediciones de los años {clave}")
+        salida.append((etiqueta, clave, ls))
+    # las décadas más antiguas primero: son las que más interesan al coleccionista
+    salida.sort(key=lambda x: (x[1] != "anteriores-a-1940", x[1]))
+    return salida
+
+
 def _paginar(items, tam):
     return [items[i:i + tam] for i in range(0, len(items), tam)] or [[]]
 
@@ -752,6 +842,8 @@ def generar_sitio(libros, salida):
                         key=lambda c: (c == "Otros", c))  # Otros al final
     autores_idx = _indice_autores(libros)
     autores_orden = sorted(autores_idx.items(), key=lambda kv: (-len(kv[1]["libros"]), kv[0]))
+    editoriales_idx = _indice_editoriales(libros)
+    decadas = _indice_decadas(libros)
 
     for c in categorias:
         open(os.path.join(salida, "ph", f"{_slug_cat(c)}.svg"), "w").write(placeholder_svg(c))
@@ -771,7 +863,8 @@ def generar_sitio(libros, salida):
 
     n_estante = sum(1 for l in libros if not en_indice(l))
     open(os.path.join(salida, "index.html"), "w").write(
-        generar_index(libros, categorias, autores_orden, n_estante=n_estante))
+        generar_index(libros, categorias, autores_orden, n_estante=n_estante,
+                      editoriales_idx=editoriales_idx, decadas=decadas))
 
     for l in libros:
         l["_en_indice"] = en_indice(l)
@@ -842,6 +935,108 @@ def generar_sitio(libros, salida):
             open(destino, "w").write(html_pag)
             if i == 1:
                 urls_listas.append((url, "0.7"))
+
+    # --- editoriales de época ---------------------------------------------
+    for nombre, d in sorted(editoriales_idx.items(), key=lambda kv: (-kv[1]["antiguos"], kv[0])):
+        ls, slug, ant = d["libros"], d["slug"], d["antiguos"]
+        paginas = _paginar(ls, POR_PAGINA)
+        os.makedirs(os.path.join(salida, "editorial", slug), exist_ok=True)
+        rango = sorted({_anio_int(x) for x in ls if _anio_int(x)})
+        desde_hasta = f" Van de {rango[0]} a {rango[-1]}." if len(rango) > 1 else ""
+        for i, lote in enumerate(paginas, start=1):
+            url = f"/editorial/{slug}/" if i == 1 else f"/editorial/{slug}/{i}.html"
+            robots = "index,follow,max-image-preview:large" if i == 1 else "noindex,follow"
+            suf = "" if i == 1 else f" — página {i}"
+            html_pag = generar_pagina_listado(
+                titulo_h1=f"{nombre}{suf}",
+                intro=(f"{len(ls)} libros usados de {esc(nombre)} en Librería Ichinén, "
+                       f"Av. Triunvirato 4015, Villa Urquiza. "
+                       f"<strong>{ant} son ediciones anteriores a {ANIO_ANTIGUO}.</strong>{desde_hasta} "
+                       f"Son ejemplares de segunda mano y de stock único: si te interesa alguno, "
+                       f"consultá por WhatsApp antes de venir."),
+                libros=lote, canonical=DOMINIO + url,
+                migas=[("Catálogo", "/"), (f"{nombre}{suf}", None)],
+                titulo_seo=f"{nombre} — {len(ls)} libros usados{suf} | Librería Ichinén",
+                desc=(f"{len(ls)} libros usados de editorial {nombre}, {ant} de ellos anteriores "
+                      f"a {ANIO_ANTIGUO}. Librería Ichinén, Villa Urquiza, CABA."),
+                pagina=i, total_paginas=len(paginas),
+                url_pagina=lambda n, slug=slug: (f"/editorial/{slug}/" if n == 1
+                                                 else f"/editorial/{slug}/{n}.html"),
+                robots=robots)
+            destino = (os.path.join(salida, "editorial", slug, "index.html") if i == 1
+                       else os.path.join(salida, "editorial", slug, f"{i}.html"))
+            open(destino, "w").write(html_pag)
+            if i == 1:
+                urls_listas.append((url, "0.7"))
+
+    # --- ediciones antiguas, por década ------------------------------------
+    for etiqueta, clave, ls in decadas:
+        paginas = _paginar(ls, POR_PAGINA)
+        os.makedirs(os.path.join(salida, "ediciones-antiguas", clave), exist_ok=True)
+        sellos = [e for e, _ in collections.Counter(
+            x["editorial"] for x in ls if x["editorial"]).most_common(6)]
+        for i, lote in enumerate(paginas, start=1):
+            url = (f"/ediciones-antiguas/{clave}/" if i == 1
+                   else f"/ediciones-antiguas/{clave}/{i}.html")
+            robots = "index,follow,max-image-preview:large" if i == 1 else "noindex,follow"
+            suf = "" if i == 1 else f" — página {i}"
+            html_pag = generar_pagina_listado(
+                titulo_h1=f"{etiqueta}{suf}",
+                intro=(f"{len(ls)} libros usados editados en esa época, en el local de "
+                       f"Av. Triunvirato 4015, Villa Urquiza. "
+                       f"{'Sellos más presentes: ' + esc(', '.join(sellos)) + '. ' if sellos else ''}"
+                       f"Son ejemplares únicos de segunda mano: lo que hoy está, mañana puede no estar. "
+                       f"Consultá por WhatsApp antes de venir."),
+                libros=lote, canonical=DOMINIO + url,
+                migas=[("Catálogo", "/"), ("Ediciones antiguas", "/ediciones-antiguas/"),
+                       (f"{etiqueta}{suf}", None)],
+                titulo_seo=f"{etiqueta}{suf} — libros usados | Librería Ichinén",
+                desc=(f"{len(ls)} libros usados de esa época en Librería Ichinén, Villa Urquiza, "
+                      f"CABA. Ediciones de segunda mano, stock único."),
+                pagina=i, total_paginas=len(paginas),
+                url_pagina=lambda n, clave=clave: (f"/ediciones-antiguas/{clave}/" if n == 1
+                                                   else f"/ediciones-antiguas/{clave}/{n}.html"),
+                robots=robots)
+            destino = (os.path.join(salida, "ediciones-antiguas", clave, "index.html") if i == 1
+                       else os.path.join(salida, "ediciones-antiguas", clave, f"{i}.html"))
+            open(destino, "w").write(html_pag)
+            if i == 1:
+                urls_listas.append((url, "0.7"))
+
+    # --- portada de ediciones antiguas -------------------------------------
+    if decadas:
+        antiguos = [l for l in libros if es_antiguo(l)]
+        enlaces_dec = "".join(
+            f'<a href="/ediciones-antiguas/{c}/">{esc(e)} <b>{len(ls)}</b></a>'
+            for e, c, ls in decadas)
+        enlaces_ed = "".join(
+            f'<a href="/editorial/{d["slug"]}/">{esc(n)} <b>{d["antiguos"]}</b></a>'
+            for n, d in sorted(editoriales_idx.items(), key=lambda kv: (-kv[1]["antiguos"], kv[0])))
+        cuerpo_hub = f"""
+  <div class="hub">
+    <h2>Por década de edición</h2>
+    <div class="lista">{enlaces_dec}</div>
+    <h2>Por sello</h2>
+    <div class="lista">{enlaces_ed}</div>
+  </div>"""
+        html_hub = generar_pagina_listado(
+            titulo_h1="Ediciones antiguas",
+            intro=(f"{len(antiguos)} libros usados editados antes de {ANIO_ANTIGUO} en Librería "
+                   f"Ichinén, Av. Triunvirato 4015, Villa Urquiza. Sellos como Bruguera, Losada, "
+                   f"Eudeba, Círculo de Lectores o Centro Editor de América Latina, que ya no "
+                   f"editan o cambiaron de manos. Son ejemplares únicos de segunda mano."),
+            libros=_paginar(sorted(antiguos, key=_anio_int)[:POR_PAGINA], POR_PAGINA)[0],
+            canonical=DOMINIO + "/ediciones-antiguas/",
+            migas=[("Catálogo", "/"), ("Ediciones antiguas", None)],
+            titulo_seo="Ediciones antiguas — libros usados de época | Librería Ichinén",
+            desc=(f"{len(antiguos)} libros usados anteriores a {ANIO_ANTIGUO} en Librería Ichinén, "
+                  f"Villa Urquiza, CABA. Bruguera, Losada, Eudeba, Centro Editor y más."),
+            pagina=1, total_paginas=1, url_pagina=lambda n: "/ediciones-antiguas/",
+            robots="index,follow,max-image-preview:large")
+        html_hub = html_hub.replace(_FOOTER, cuerpo_hub + _FOOTER)
+        os.makedirs(os.path.join(salida, "ediciones-antiguas"), exist_ok=True)
+        open(os.path.join(salida, "ediciones-antiguas", "index.html"), "w").write(html_hub)
+        urls_listas.append(("/ediciones-antiguas/", "0.8"))
 
     # --- Estante de sorpresas ---------------------------------------------
     # Los libros que quedaron fuera del índice siguen en la casa: se pueden
