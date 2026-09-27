@@ -24,6 +24,10 @@ from urllib.parse import quote
 WA_NUMERO = "5491159952089"  # WhatsApp de la librería (+54 9 11 5995-2089)
 DOMINIO = "https://catalogo.ichinen.com.ar"
 SITIO_HOME = "https://ichinen.com.ar"
+
+# Tokens de verificación de Google Search Console (el nombre del archivo .html que
+# da Google, sin extensión). Se publican en la raíz del sitio en cada build.
+VERIFICACION_GOOGLE = ["google3a11b5bcbe0cc921"]
 ID_LIBRERIA = f"{SITIO_HOME}/#libreria"   # el @id del BookStore declarado en la home
 OG_FALLBACK = f"{SITIO_HOME}/img/og.jpg"  # para compartir fichas sin tapa real
 
@@ -1117,6 +1121,11 @@ def generar_sitio(libros, salida):
         f"User-agent: *\nAllow: /\n\nSitemap: {DOMINIO}/sitemap.xml\n")
     open(os.path.join(salida, "CNAME"), "w").write("catalogo.ichinen.com.ar\n")
     open(os.path.join(salida, ".nojekyll"), "w").write("")
+    # Verificación de Search Console. El build borra docs/ entero en cada corrida,
+    # así que el archivo se tiene que regenerar acá o la propiedad se desverifica.
+    for token in VERIFICACION_GOOGLE:
+        open(os.path.join(salida, f"{token}.html"), "w").write(
+            f"google-site-verification: {token}.html\n")
 
     print(f"  categorías: {len(categorias)} · autores con página: {len(autores_idx)} · "
           f"fichas indexables: {n_indexables} de {len(libros)}")
