@@ -148,8 +148,20 @@ def main():
         if not url:
             print("ERROR: falta EXCEL_URL (o pasá --excel).", file=sys.stderr)
             sys.exit(1)
-        if descargar_excel(url, excel_local):
-            # descarga OK: guardar copia como respaldo para futuras corridas
+        descargado = descargar_excel(url, excel_local)
+        if descargado:
+            # Validar ANTES de pisar el respaldo: si el Excel subido no es la
+            # exportación de libros (p. ej. la de "Publicaciones", sin autor ni
+            # ISBN), se sigue con el último bueno y se avisa en la corrida.
+            try:
+                leer_excel(excel_local)
+            except Exception as e:
+                descargado = False
+                print(f"::warning::El Excel subido no tiene el formato esperado ({e}). "
+                      "Se usa el último Excel válido. Hay que volver a subir la "
+                      "exportación de Mercado Libre de la categoría Libros.")
+        if descargado:
+            # descarga OK y válida: guardar copia como respaldo para futuras corridas
             shutil.copy(excel_local, respaldo)
         elif os.path.exists(respaldo):
             # Hostinger no respondió: usar el último Excel que bajó bien.
