@@ -442,7 +442,7 @@ def desambiguar_titulos(libros):
 def generar_pagina_libro(libro, autores_idx):
     au_txt = autor_texto(libro)
     tit_seo = libro["titulo"] + libro.get("desamb", "")
-    titulo_seo = (f'{tit_seo} — {au_txt} | Librería Ichinén' if au_txt
+    titulo_seo = (f'{tit_seo} — {au_txt} | Libro usado en Librería Ichinén' if au_txt
                   else f'{tit_seo} — libro usado | Librería Ichinén')
     desc = f'{libro["titulo"]}'
     if libro["autor_ok"]:
