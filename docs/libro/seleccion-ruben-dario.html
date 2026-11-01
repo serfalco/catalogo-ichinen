@@ -51,4 +51,6 @@
   <small><a href="https://ichinen.com.ar">ichinen.com.ar</a> · <a href="https://www.instagram.com/ichinen_libreria">Instagram</a> · <a href="https://wa.me/5491159952089">WhatsApp</a></small>
   <span class="fr">Cada libro tiene una historia.</span>
 </div></footer>
+<script>/* contador de consultas por WhatsApp: sin cookies ni datos personales */
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href*="wa.me"]');if(!a)return;var c=a.closest('article'),r=c&&c.querySelector('a[href*="/libro/"]'),h=r?r.getAttribute('href'):location.pathname,m=h.match(/\/libro\/([^\/]+?)\.html/),p=location.hostname.indexOf('catalogo')===0?(location.pathname.split('/')[1]||'inicio'):'home';try{navigator.sendBeacon('https://ichinen.com.ar/api/clic',JSON.stringify({l:m?m[1]:'',p:p}))}catch(_){}});</script>
 </body></html>
