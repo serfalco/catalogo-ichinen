@@ -560,6 +560,54 @@ def generar_pagina_libro(libro, autores_idx):
 
 
 # ---------------------------------------------------------------------------
+def _lista_es(items):
+    items = [x for x in items if x]
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " y " + items[-1]
+
+
+def _intro_autor(nombre, ls):
+    """Texto propio de cada página de autor, armado solo con datos del stock.
+
+    No usa biografías ni datos externos: todo lo que dice sale del Excel, así
+    que no puede inventar nada y es distinto en cada autor.
+    """
+    vistos, titulos = set(), []
+    for x in ls:
+        k = x["titulo"].lower()
+        if k not in vistos:
+            vistos.add(k)
+            titulos.append(x["titulo"])
+    n_tit, n_ej = len(titulos), len(ls)
+    cuantos = (f"{n_ej} libros usados" if n_tit == n_ej
+               else f"{n_tit} títulos ({n_ej} ejemplares) usados")
+    partes = [f"En Librería Ichinén tenemos {cuantos} de {esc(nombre)}"]
+    if titulos:
+        muestra = [f"<em>{esc(t)}</em>" for t in titulos[:5]]
+        partes[0] += (", entre ellos " if n_tit > 5 else ": ") + _lista_es(muestra)
+    partes[0] += "."
+    eds = collections.Counter(x["editorial"] for x in ls if x.get("editorial"))
+    anios = sorted(a for a in (_anio_int(x) for x in ls) if a)
+    frase = ""
+    if eds:
+        frase = "Hay ediciones de " + _lista_es([esc(e) for e, _ in eds.most_common(3)])
+    if anios:
+        rango = (f"de {anios[0]}" if anios[0] == anios[-1]
+                 else f"publicadas entre {anios[0]} y {anios[-1]}")
+        frase = (frase + ", " + rango) if frase else "Hay ediciones " + rango
+    viejos = sum(1 for x in ls if es_antiguo(x))
+    if frase:
+        if viejos:
+            frase += (f"; {viejos} son ediciones anteriores a {ANIO_ANTIGUO}"
+                      if viejos > 1 else f"; una es anterior a {ANIO_ANTIGUO}")
+        partes.append(frase + ".")
+    partes.append("Están en el local de Av. Triunvirato 4015, Villa Urquiza, a dos cuadras "
+                  "de la estación Echeverría del subte B. Cada ejemplar es único y el stock "
+                  "cambia seguido: consultá por WhatsApp antes de venir.")
+    return " ".join(partes)
+
+
 def generar_pagina_listado(titulo_h1, intro, libros, canonical, migas, titulo_seo, desc,
                            pagina, total_paginas, url_pagina, robots):
     """Listado paginado genérico (sirve para categorías y autores)."""
@@ -924,14 +972,11 @@ def generar_sitio(libros, salida):
             suf = "" if i == 1 else f" — página {i}"
             cats = sorted({x["categoria"] for x in ls})
             html_pag = generar_pagina_listado(
-                titulo_h1=f"Libros de {nombre}{suf}",
-                intro=(f"Tenemos {len(ls)} libros usados de {esc(nombre)} en el local de "
-                       f"Av. Triunvirato 4015, Villa Urquiza"
-                       f"{' — ' + esc(', '.join(cats)) if cats else ''}. "
-                       f"Los títulos y las ediciones cambian seguido: consultá por WhatsApp antes de venir."),
+                titulo_h1=f"Libros usados de {nombre}{suf}",
+                intro=_intro_autor(nombre, ls),
                 libros=lote, canonical=canonical,
                 migas=[("Catálogo", "/"), (f"{nombre}{suf}", None)],
-                titulo_seo=f"{nombre} — {len(ls)} libros usados{suf} | Librería Ichinén",
+                titulo_seo=f"Libros usados de {nombre} — {len({x['titulo'].lower() for x in ls})} títulos{suf} | Librería Ichinén",
                 desc=(f"{len(ls)} libros usados de {nombre} disponibles en Librería Ichinén, "
                       f"Villa Urquiza, CABA. Consultá disponibilidad por WhatsApp."),
                 pagina=i, total_paginas=len(paginas),
