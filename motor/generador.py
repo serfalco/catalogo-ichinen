@@ -70,7 +70,10 @@ def indexable(libro, exigir_material=True):
     criterio dejaría el catálogo entero fuera del índice por un motivo falso.
     """
     if exigir_material and not _tiene_con_que(libro):
-        return False
+        # Excepción: ediciones anteriores a 1990 con autor confirmado. Antes de
+        # los años 70 los libros no llevaban ISBN, así que exigirlo castiga justo
+        # al fondo antiguo, que es el inventario que mejor rankea (medición 15/9).
+        return bool(libro.get("autor_ok")) and es_antiguo(libro)
     if libro.get("autor_ok"):
         return True
     return libro.get("categoria") in CAT_SIN_AUTOR
