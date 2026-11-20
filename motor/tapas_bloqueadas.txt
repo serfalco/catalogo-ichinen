@@ -1,0 +1,2 @@
+# Un ISBN por línea. Tapas por ISBN que se comprobaron equivocadas.
+9789875710191  # Cinco semanas en globo (Malva): traía un libro de Google Tag Manager

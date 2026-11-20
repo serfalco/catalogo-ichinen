@@ -173,10 +173,21 @@ def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15,
         except Exception:
             verificadas = set()
 
+    # ISBN con la tapa equivocada comprobada a mano (el ISBN del Excel es de otro
+    # libro). Lista fija en motor/, que el workflow no reescribe.
+    bloq_path = os.path.join(os.path.dirname(__file__), "tapas_bloqueadas.txt")
+    bloqueadas = set()
+    if os.path.exists(bloq_path):
+        bloqueadas = {x.split("#")[0].strip() for x in open(bloq_path, encoding="utf8")} - {""}
+    for isbn in bloqueadas:
+        f = os.path.join(dir_tapas, f"{isbn}.jpg")
+        if os.path.exists(f):
+            os.remove(f)
+
     nuevas, cacheadas, sin_tapa, intentos, descartadas, errores = 0, 0, 0, 0, 0, 0
     for l in libros:
         isbn = l.get("isbn")
-        if not isbn:
+        if not isbn or isbn in bloqueadas:
             continue
         destino = os.path.join(dir_tapas, f"{isbn}.jpg")
         rel = f"/tapas/{isbn}.jpg"
