@@ -12,7 +12,9 @@ La llave es el título de la publicación (columna TITLE del Excel), que es el
 mismo texto que se ve en Mercado Libre. Solo se usan fotos subidas por el
 vendedor (las de catálogo genérico de Mercado Libre quedan afuera).
 
-Se usa solo como respaldo: si el libro ya tiene tapa por ISBN, se respeta.
+Tiene prioridad sobre la tapa buscada por ISBN: es la foto del ejemplar real,
+y el ISBN del Excel a veces está mal cargado (ej.: "Cinco semanas en globo"
+mostraba la tapa de un libro de Google Tag Manager).
 """
 import os, json, re, unicodedata
 
@@ -25,7 +27,7 @@ def normalizar(t):
 
 
 def aplicar_fotos_ml(libros, dir_tapas, indice_path):
-    """Asigna tapa_url a los libros sin tapa que tienen foto propia en ML."""
+    """Asigna tapa_url a los libros que tienen foto propia en ML (pisa la de ISBN)."""
     if not os.path.exists(indice_path):
         return {"asignadas": 0, "indice": 0}
     try:
@@ -34,8 +36,6 @@ def aplicar_fotos_ml(libros, dir_tapas, indice_path):
         return {"asignadas": 0, "indice": 0}
     asignadas = 0
     for l in libros:
-        if l.get("tapa_url"):
-            continue
         rel = indice.get(normalizar(l.get("titulo_ml")))
         if rel and os.path.exists(os.path.join(dir_tapas, rel)):
             l["tapa_url"] = f"/tapas/{rel}"
