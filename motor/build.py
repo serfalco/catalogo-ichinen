@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lector import leer_excel, reclasificar
 from generador import generar_sitio
 from tapas import buscar_tapas
+from fotos_ml import aplicar_fotos_ml
 from enriquecer import enriquecer
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # raíz del repo
@@ -213,6 +214,12 @@ def main():
         _anotar_pendientes(libros)
     else:
         print("Búsqueda de tapas desactivada (BUSCAR_TAPAS != 1). Todos con placeholder.")
+
+    # Fotos propias del librero en Mercado Libre, para los que siguen sin tapa.
+    # Van en la caché de tapas (ml/), así que sobreviven entre corridas.
+    st_ml = aplicar_fotos_ml(libros, cache_tmp, os.path.join(RAIZ, ".fotos_ml.json"))
+    print(f"  fotos de Mercado Libre: {st_ml['asignadas']} asignadas "
+          f"(índice con {st_ml['indice']} publicaciones)")
 
     print("Generando sitio …")
     generar_sitio(libros, SALIDA)

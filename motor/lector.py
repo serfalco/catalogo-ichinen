@@ -72,6 +72,9 @@ def leer_excel(path: str):
 
         libros.append({
             "titulo": titulo,
+            # Título de la publicación en Mercado Libre, tal cual: es la llave
+            # para encontrar la foto del ejemplar (ver fotos_ml.py).
+            "titulo_ml": _celda(r, "TITLE"),
             "autor": autor,
             "autor_ok": autor_ok,
             "editorial": editorial,
