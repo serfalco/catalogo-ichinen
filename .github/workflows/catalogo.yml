@@ -104,7 +104,7 @@ jobs:
           for intento in 1 2 3; do
             git fetch origin main
             git reset --soft origin/main
-            git add -A docs .huella_excel .tapas_fallidas.json .enriquecido.json .pendientes listado_ultimo_ok.xlsx 2>/dev/null || true
+            git add -A docs .lastmod.json .huella_excel .tapas_fallidas.json .enriquecido.json .pendientes listado_ultimo_ok.xlsx 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "Sin cambios para publicar."
               exit 0

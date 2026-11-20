@@ -17,7 +17,7 @@ Criterio de indexación (importante):
   buscables para el visitante; simplemente no se ofrecen al índice. Es reversible:
   cuando el dato se corrige, la ficha vuelve a entrar sola en la próxima corrida.
 """
-import os, json, html, shutil, collections
+import os, json, html, shutil, collections, hashlib
 from datetime import date
 from urllib.parse import quote
 
@@ -1135,13 +1135,36 @@ def generar_sitio(libros, salida):
 
     # --- sitemaps ---------------------------------------------------------
     hoy = date.today().isoformat()
+
+    # lastmod real: cada página conserva la fecha de su último cambio de
+    # contenido. Antes todas decían "hoy" en cada corrida, y Google deja de
+    # confiar en un lastmod que cambia siempre. Registro: .lastmod.json en la
+    # raíz del repo, {url: [hash del html, fecha]}.
+    reg_path = os.path.join(os.path.dirname(os.path.abspath(salida)), ".lastmod.json")
+    try:
+        registro = json.load(open(reg_path, encoding="utf-8"))
+    except Exception:
+        registro = {}
+    nuevo_reg = {}
+    def lastmod(url):
+        rel = url.lstrip("/")
+        if rel == "" or rel.endswith("/"):
+            rel += "index.html"
+        try:
+            h = hashlib.sha1(open(os.path.join(salida, rel), "rb").read()).hexdigest()[:16]
+        except OSError:
+            return hoy
+        viejo = registro.get(url)
+        fecha = viejo[1] if viejo and viejo[0] == h else hoy
+        nuevo_reg[url] = [h, fecha]
+        return fecha
     NS = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
     NSIMG = 'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'
 
-    filas = [f"<url><loc>{DOMINIO}/</loc><lastmod>{hoy}</lastmod>"
+    filas = [f"<url><loc>{DOMINIO}/</loc><lastmod>{lastmod('/')}</lastmod>"
              f"<changefreq>weekly</changefreq><priority>1.0</priority></url>"]
     for url, pri in urls_listas:
-        filas.append(f"<url><loc>{DOMINIO}{url}</loc><lastmod>{hoy}</lastmod>"
+        filas.append(f"<url><loc>{DOMINIO}{url}</loc><lastmod>{lastmod(url)}</lastmod>"
                      f"<changefreq>weekly</changefreq><priority>{pri}</priority></url>")
     open(os.path.join(salida, "sitemap-listas.xml"), "w").write(
         f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset {NS}>\n' + "\n".join(filas) + "\n</urlset>")
@@ -1156,10 +1179,13 @@ def generar_sitio(libros, salida):
         if l.get("tapa_url"):
             img = (f'<image:image><image:loc>{DOMINIO}{l["tapa_url"]}</image:loc>'
                    f'<image:title>{esc("Tapa de " + l["titulo"])}</image:title></image:image>')
-        filas.append(f'<url><loc>{DOMINIO}/libro/{l["slug"]}.html</loc><lastmod>{hoy}</lastmod>'
+        u = f'/libro/{l["slug"]}.html'
+        filas.append(f'<url><loc>{DOMINIO}{u}</loc><lastmod>{lastmod(u)}</lastmod>'
                      f'<changefreq>monthly</changefreq><priority>0.6</priority>{img}</url>')
     open(os.path.join(salida, "sitemap-libros.xml"), "w").write(
         f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset {NS} {NSIMG}>\n' + "\n".join(filas) + "\n</urlset>")
+
+    json.dump(nuevo_reg, open(reg_path, "w", encoding="utf-8"), separators=(",", ":"), sort_keys=True)
 
     indice = (f'<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex {NS}>\n'
               f'<sitemap><loc>{DOMINIO}/sitemap-listas.xml</loc><lastmod>{hoy}</lastmod></sitemap>\n'
