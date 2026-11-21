@@ -853,14 +853,32 @@ function continuar(){
   masWrap.style.display = mostrados<LIBROS.length ? 'block':'none';
   listo=true;
 }
-document.getElementById('btn-mas').onclick=()=>{ if(listo) render(); };
-document.getElementById('q').addEventListener('input',e=>{ if(!listo) return; q=e.target.value; aplicar(); });
-document.querySelectorAll('.chip').forEach(ch=>ch.onclick=()=>{
-  if(!listo) return;
-  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
-  ch.classList.add('on'); cat=ch.dataset.cat; aplicar();
+// datos.json (~250 KB comprimido) se baja recién cuando hace falta: al
+// buscar, filtrar o pedir más libros. Quien solo mira la portada no lo baja.
+// Al enfocar el buscador o pasar por un filtro se empieza a bajar, así cuando
+// la persona escribe ya está (o casi).
+let cargando=null;
+function cargar(){
+  if(!cargando) cargando=fetch('/datos.json').then(r=>r.json()).then(d=>{LIBROS=d;continuar();})
+    .catch(e=>{cargando=null;throw e;});
+  return cargando;
+}
+const btnMas=document.getElementById('btn-mas');
+btnMas.onclick=()=>{
+  if(listo){render();return;}
+  const txt=btnMas.textContent; btnMas.textContent='Cargando…'; btnMas.disabled=true;
+  cargar().then(render).finally(()=>{btnMas.textContent=txt;btnMas.disabled=false;});
+};
+const inputQ=document.getElementById('q');
+inputQ.addEventListener('focus',()=>{cargar().catch(()=>{});},{once:true});
+inputQ.addEventListener('input',e=>{ q=e.target.value; cargar().then(aplicar); });
+document.querySelectorAll('.chip').forEach(ch=>{
+  ch.addEventListener('pointerenter',()=>{cargar().catch(()=>{});},{once:true});
+  ch.onclick=()=>{
+    document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+    ch.classList.add('on'); cat=ch.dataset.cat; cargar().then(aplicar);
+  };
 });
-fetch('/datos.json').then(r=>r.json()).then(d=>{LIBROS=d;continuar();});
 """
 
 
