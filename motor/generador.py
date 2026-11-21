@@ -168,6 +168,15 @@ def placeholder_svg(categoria):
 
 
 # ---------------------------------------------------------------------------
+FONT_FACE = """@font-face{font-family:'Cinzel';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/cinzel-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:600;font-display:swap;src:url(/fonts/cinzel-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Cinzel';font-style:normal;font-weight:700;font-display:swap;src:url(/fonts/cinzel-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Lora';font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/lora-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Lora';font-style:normal;font-weight:500;font-display:swap;src:url(/fonts/lora-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Lora';font-style:italic;font-weight:400;font-display:swap;src:url(/fonts/lora-latin-400-italic.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+@font-face{font-family:'Lora';font-style:italic;font-weight:500;font-display:swap;src:url(/fonts/lora-latin-500-italic.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
+"""
+
 CSS = """
 :root{
   --bordo:#B31217;--bordo-osc:#7a0c10;--azul:#2459A8;--amarillo:#E0B52B;
@@ -306,9 +315,8 @@ def _head(titulo, descripcion, canonical, extra="", robots="index,follow,max-ima
 <meta property="og:site_name" content="Librería Ichinén">
 <meta property="og:image" content="{img}">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/lora-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/cinzel-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/catalogo.css">
 {extra}
 </head>
@@ -439,6 +447,44 @@ def desambiguar_titulos(libros):
                 base = f"{base[:-1]}, ejemplar {n})" if base else f" (ejemplar {n})"
             l["desamb"] = base
     return libros
+
+
+def generar_destacados(libros, salida, n=12):
+    """destacados.json: 12 libros con tapa para la tira de la home (ichinen.com.ar).
+
+    Cambian una vez por semana (semilla = año + semana ISO), así la home muestra
+    stock distinto sin depender de que alguien la toque. Solo libros en el
+    índice, con tapa, que no sean copias de un ejemplar repetido, y como mucho
+    dos por categoría para que haya variedad. La home los inserta del lado del
+    servidor (worker.js en ichinen-web), no con JavaScript.
+    """
+    import random, datetime
+    anio, semana, _ = datetime.date.today().isocalendar()
+    elegibles = [l for l in libros
+                 if l.get("_en_indice", True) and l.get("tapa_url")
+                 and not l.get("_canon") and l.get("autor_ok")]
+    rnd = random.Random(f"{anio}-{semana}")
+    rnd.shuffle(elegibles)
+    por_cat, sel = {}, []
+    for l in elegibles:
+        if por_cat.get(l["categoria"], 0) >= 2:
+            continue
+        por_cat[l["categoria"]] = por_cat.get(l["categoria"], 0) + 1
+        sel.append(l)
+        if len(sel) == n:
+            break
+    datos = {
+        "semana": f"{anio}-W{semana:02d}",
+        "libros": [{
+            "t": l["titulo"],
+            "a": l["autor"],
+            "e": l.get("editorial") or "",
+            "u": f'{DOMINIO}/libro/{l["slug"]}.html',
+            "img": f'{DOMINIO}{l["tapa_url"]}',
+        } for l in sel],
+    }
+    json.dump(datos, open(os.path.join(salida, "destacados.json"), "w", encoding="utf-8"),
+              ensure_ascii=False, separators=(",", ":"))
 
 
 def marcar_ejemplares_repetidos(libros):
@@ -754,11 +800,20 @@ def generar_index(libros, categorias, autores_orden, n_estante=0,
 
 JS = """
 let LIBROS=[], filtrados=[], mostrados=0, cat="", q="", listo=false;
+const WA="__WA__";
 const PASO=48, PRERENDER=48;
 const grid=document.getElementById('grid');
 const cont=document.getElementById('contador');
 const masWrap=document.getElementById('mas');
 const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');
+// El link de WhatsApp se arma acá (antes venía en datos.json y era la mitad
+// del archivo). Mismo texto que wa_link() en generador.py.
+function waLink(l){
+  let m='Hola! Me interesa el libro "'+l.t+'"';
+  if(l.a&&l.a!=='Autor a verificar')m+=' de '+l.a;
+  m+='. ¿Está disponible?';
+  return 'https://wa.me/'+WA+'?text='+encodeURIComponent(m);
+}
 function tarjeta(l){
   const cover=l.tapa_url
     ?`<div class="cover"><div class="tc"></div><img src="${l.tapa_url}" alt="Tapa de ${l.t}" loading="lazy"></div>`
@@ -770,7 +825,7 @@ function tarjeta(l){
     ${cover}<div class="cat">${l.c}</div>${verif}
     <div class="t">${l.t}</div><div class="a">${au}</div>
     <div class="meta">${meta}</div></a>
-    <a class="btn-wa" href="${l.wa}" target="_blank" rel="noopener">Consultar</a></article>`;
+    <a class="btn-wa" href="${waLink(l)}" target="_blank" rel="noopener">Consultar</a></article>`;
 }
 function aplicar(){
   const nq=norm(q);
@@ -933,15 +988,21 @@ def generar_sitio(libros, salida):
     for c in categorias:
         open(os.path.join(salida, "ph", f"{_slug_cat(c)}.svg"), "w").write(placeholder_svg(c))
 
-    open(os.path.join(salida, "css", "catalogo.css"), "w").write(CSS)
-    open(os.path.join(salida, "js", "catalogo.js"), "w").write(JS)
+    # Tipografías servidas desde el propio sitio (antes Google Fonts, que
+    # bloqueaba el render). Los .woff2 viven en motor/fuentes/ (licencia OFL).
+    os.makedirs(os.path.join(salida, "fonts"), exist_ok=True)
+    dir_fuentes = os.path.join(os.path.dirname(__file__), "fuentes")
+    for f in os.listdir(dir_fuentes):
+        if f.endswith(".woff2"):
+            shutil.copy(os.path.join(dir_fuentes, f), os.path.join(salida, "fonts", f))
+    open(os.path.join(salida, "css", "catalogo.css"), "w").write(FONT_FACE + CSS)
+    open(os.path.join(salida, "js", "catalogo.js"), "w").write(JS.replace("__WA__", WA_NUMERO))
 
     datos = [{
         "t": l["titulo"], "a": l["autor"], "ok": l["autor_ok"],
         "ed": l["editorial"], "an": l["anio"], "c": l["categoria"],
         "s": l["slug"], "v": bool([f for f in l["faltantes"] if f != "autor"]),
         "tapa_url": l.get("tapa_url", ""), "cs": _slug_cat(l["categoria"]),
-        "wa": wa_link(l["titulo"], l["autor"]),
     } for l in libros]
     json.dump(datos, open(os.path.join(salida, "datos.json"), "w"),
               ensure_ascii=False, separators=(",", ":"))
@@ -954,6 +1015,7 @@ def generar_sitio(libros, salida):
     for l in libros:
         l["_en_indice"] = en_indice(l)
     marcar_ejemplares_repetidos(libros)
+    generar_destacados(libros, salida)
     for l in libros:
         open(os.path.join(salida, "libro", f'{l["slug"]}.html'), "w").write(
             generar_pagina_libro(l, autores_idx))
