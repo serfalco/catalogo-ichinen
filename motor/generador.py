@@ -441,6 +441,31 @@ def desambiguar_titulos(libros):
     return libros
 
 
+def marcar_ejemplares_repetidos(libros):
+    """Varios ejemplares de la MISMA edición (mismo título, autor, editorial y
+    año) tienen fichas casi idénticas y Google elige una por su cuenta
+    ("Duplicada: Google ha elegido una versión canónica diferente").
+    Les decimos cuál es la principal: el primer ejemplar que está en el índice.
+    Las copias siguen publicadas (cada una con su botón de consulta), apuntan
+    con canonical a la principal y no van al sitemap. Guarda libro["_canon"].
+    """
+    grupos = {}
+    for l in libros:
+        clave = (l["titulo"].strip().lower(),
+                 l["autor"].strip().lower() if l["autor_ok"] else "",
+                 (l.get("editorial") or "").strip().lower(),
+                 str(l.get("anio") or "").strip())
+        grupos.setdefault(clave, []).append(l)
+    for g in grupos.values():
+        if len(g) < 2:
+            continue
+        principal = next((l for l in g if l.get("_en_indice", True)), g[0])
+        for l in g:
+            if l is not principal:
+                l["_canon"] = principal["slug"]
+    return libros
+
+
 def generar_pagina_libro(libro, autores_idx):
     au_txt = autor_texto(libro)
     tit_seo = libro["titulo"] + libro.get("desamb", "")
@@ -557,7 +582,10 @@ def generar_pagina_libro(libro, autores_idx):
 </main>
 {rel_html}
 """
-    return _head(titulo_seo, desc, canonical, extra, robots=robots,
+    # Copia de un ejemplar repetido: el canonical apunta a la ficha principal.
+    canon_link = (f'{DOMINIO}/libro/{libro["_canon"]}.html' if libro.get("_canon")
+                  else canonical)
+    return _head(titulo_seo, desc, canon_link, extra, robots=robots,
                  og_image=og_img, og_type="article") + body + _FOOTER
 
 
@@ -925,6 +953,7 @@ def generar_sitio(libros, salida):
 
     for l in libros:
         l["_en_indice"] = en_indice(l)
+    marcar_ejemplares_repetidos(libros)
     for l in libros:
         open(os.path.join(salida, "libro", f'{l["slug"]}.html'), "w").write(
             generar_pagina_libro(l, autores_idx))
@@ -1174,6 +1203,8 @@ def generar_sitio(libros, salida):
     for l in libros:
         if not l.get("_en_indice", True):
             continue          # las del estante no se le ofrecen a Google
+        if l.get("_canon"):
+            continue          # copias de un ejemplar repetido: va solo la principal
         n_indexables += 1
         img = ""
         if l.get("tapa_url"):
