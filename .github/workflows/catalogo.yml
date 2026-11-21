@@ -104,6 +104,11 @@ jobs:
           for intento in 1 2 3; do
             git fetch origin main
             git reset --soft origin/main
+            # El índice queda igual a origin/main y solo se suma la salida
+            # generada. Sin esto, el commit llevaba el código de cuando arrancó
+            # la corrida y revertía en silencio los cambios de motor/ (u otros)
+            # publicados mientras corría (pasó el 21/11 con generador.py).
+            git reset -q
             git add -A docs .lastmod.json .huella_excel .tapas_fallidas.json .enriquecido.json .pendientes listado_ultimo_ok.xlsx 2>/dev/null || true
             if git diff --cached --quiet; then
               echo "Sin cambios para publicar."
