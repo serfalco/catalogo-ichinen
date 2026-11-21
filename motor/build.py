@@ -222,6 +222,13 @@ def main():
           f"(índice con {st_ml['indice']} publicaciones)")
 
     print("Generando sitio …")
+    # Stock nuevo que todavía no pasó por la revisión manual de categorías
+    # (motor/clasificacion_manual.tsv). Se lista para incorporarlo a mano.
+    nuevos = [l for l in libros if not l.get("_cat_manual")]
+    print(f"Sin revisión manual de categoría: {len(nuevos)} ejemplares")
+    for l in nuevos[:40]:
+        print(f"  · {l['titulo']} — {l['autor'] if l['autor_ok'] else '?'} → {l['categoria']}")
+
     generar_sitio(libros, SALIDA)
 
     # Restaurar/colocar las tapas dentro de la salida

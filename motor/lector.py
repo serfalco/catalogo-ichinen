@@ -7,6 +7,21 @@ from limpieza import (
     clasificar, limpiar_titulo, limpiar_autor, limpiar_anio,
     limpiar_editorial, isbn_valido, slugify,
 )
+from categorias import cargar_manual, clave as clave_obra
+
+_MANUAL = None
+
+
+def _manual():
+    global _MANUAL
+    if _MANUAL is None:
+        _MANUAL = cargar_manual()
+    return _MANUAL
+
+
+def _categoria_manual(libro):
+    """La categoría revisada a mano para esta obra, o None si es stock nuevo."""
+    return _manual().get(clave_obra(libro["titulo"], libro["autor"] if libro["autor_ok"] else ""))
 
 def _celda(row, col):
     v = row.get(col)
@@ -107,7 +122,11 @@ def leer_excel(path: str):
             "temas": [],
         })
 
-    _fusionar_categorias_chicas(libros)
+    # La clave se toma acá, con los datos del Excel: el enriquecimiento puede
+    # completar el autor después y cambiaría la clave.
+    for l in libros:
+        l["_cat_manual"] = _categoria_manual(l)
+        l["categoria"] = l["_cat_manual"] or l["categoria"]
     return libros
 
 
@@ -117,12 +136,9 @@ def reclasificar(libros):
     una vez que los temas de la API están cargados en cada libro.
     Devuelve cuántos libros cambiaron de categoría.
     """
-    # Se compara contra el estado final, después de fusionar las categorías
-    # chicas. Si se contara dentro del bucle se registrarían idas y vueltas que
-    # la fusión cancela, y el número del log sería más alto que los cambios reales.
     antes = [l["categoria"] for l in libros]
     for l in libros:
-        l["categoria"] = clasificar(
+        l["categoria"] = l.get("_cat_manual") or clasificar(
             l["_tipo"],
             titulo=l["titulo"],
             autor=l["autor"] if l["autor_ok"] else l.get("_autor_raw", ""),
@@ -130,50 +146,11 @@ def reclasificar(libros):
             coleccion=l["coleccion"],
             temas=l.get("temas"),
         )
-    _fusionar_categorias_chicas(libros)
     return sum(1 for a, l in zip(antes, libros) if a != l["categoria"])
 
 
-# Una categoría con muy pocos libros genera una página flaca, que es justo lo
-# que estamos tratando de evitar. Las que no llegan al mínimo se absorben en
-# su categoría madre. El umbral es el tamaño mínimo para que una página de
-# listado tenga sentido para el visitante y para Google.
-MIN_POR_CATEGORIA = 20
-CATEGORIA_MADRE = {
-    "Cocina y hogar":           "Ensayo y no ficción",
-    "Biografías y testimonios": "Ensayo y no ficción",
-    "Diccionarios y consulta":  "Ensayo y no ficción",
-    "Ciencia y salud":          "Ensayo y no ficción",
-    "Economía y sociedad":      "Ensayo y no ficción",
-    "Psicología y autoayuda":   "Ensayo y no ficción",
-    "Arte y música":            "Ensayo y no ficción",
-    "Mitología y clásicos":     "Clásicos de la literatura",
-    "Novela histórica":         "Narrativa",
-    "Novela romántica":         "Narrativa",
-    "Thriller y suspenso":      "Narrativa",
-    "Ciencia ficción y fantasía": "Narrativa",
-    "Policial y misterio":      "Narrativa",
-    "Clásicos de la literatura": "Narrativa",
-    "Infantil y juvenil":       "Narrativa",
-    "Espiritualidad y religión": "Ensayo y no ficción",
-    "Historia y política":      "Ensayo y no ficción",
-    "Filosofía y pensamiento":  "Ensayo y no ficción",
-    "Poesía":                   "Narrativa",
-    "Teatro":                   "Narrativa",
-}
-
-
-def _fusionar_categorias_chicas(libros):
-    from collections import Counter
-    for _ in range(5):  # puede hacer falta más de una pasada en cascada
-        cuenta = Counter(l["categoria"] for l in libros)
-        chicas = {c for c, n in cuenta.items()
-                  if n < MIN_POR_CATEGORIA and c in CATEGORIA_MADRE}
-        if not chicas:
-            break
-        for l in libros:
-            if l["categoria"] in chicas:
-                l["categoria"] = CATEGORIA_MADRE[l["categoria"]]
+# No hay fusión automática de categorías chicas: una categoría se define por
+# su materia (ver CLASIFICACION.md), no por cuántos ejemplares tiene hoy.
 
 if __name__ == "__main__":
     import sys, json

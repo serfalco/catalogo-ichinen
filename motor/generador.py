@@ -117,21 +117,34 @@ def linea_autor(libro, enlace=None):
 ESTILO_CATEGORIA = {
     "Narrativa":                  ("#f3e7e7", "#7a0c10", "✦"),
     "Clásicos de la literatura":  ("#f0e6e0", "#6d3a1e", "❈"),
-    "Ensayo y no ficción":        ("#eae6dd", "#4a463b", "❖"),
-    "Filosofía y pensamiento":    ("#e6e4dc", "#3f4a3b", "◉"),
-    "Historia y política":        ("#ece5da", "#6b4a20", "⚑"),
-    "Poesía":                     ("#e7edf6", "#1b4078", "❧"),
-    "Teatro":                     ("#faf3df", "#8a6a12", "⁘"),
     "Policial y misterio":        ("#e4e2e6", "#3a3340", "☾"),
     "Thriller y suspenso":        ("#e8e3e3", "#5a2a2a", "✷"),
+    "Terror":                     ("#e2dede", "#3b1414", "☠"),
     "Ciencia ficción y fantasía": ("#e3ecec", "#14555a", "✧"),
     "Novela romántica":           ("#f6e8ec", "#8a2f4d", "❥"),
     "Novela histórica":           ("#eee7d8", "#6b551f", "⌘"),
+    "Poesía":                     ("#e7edf6", "#1b4078", "❧"),
+    "Teatro":                     ("#faf3df", "#8a6a12", "⁘"),
+    "Mitología y épica clásica":  ("#efe9dd", "#5a4a26", "⚭"),
+    "Ensayo y crítica literaria": ("#eae6dd", "#4a463b", "❖"),
+    "Humor":                      ("#fbf0d9", "#946200", "☺"),
     "Historieta y cómic":         ("#e8eef7", "#1b4078", "◧"),
-    "Infantil y juvenil":         ("#fdf1dc", "#a05a12", "☺"),
-    "Mitología y clásicos":       ("#efe9dd", "#5a4a26", "⚭"),
-    "Espiritualidad y religión":  ("#eae7f0", "#463a63", "✤"),
-    "Psicología y autoayuda":     ("#e6ede8", "#2c5340", "❂"),
+    "Infantil":                   ("#fdf1dc", "#a05a12", "✿"),
+    "Juvenil":                    ("#f7ecdf", "#8a4b1a", "✪"),
+    "Filosofía y pensamiento":    ("#e6e4dc", "#3f4a3b", "◉"),
+    "Psicología y psicoanálisis": ("#e6ede8", "#2c5340", "Ψ"),
+    "Autoayuda y desarrollo personal": ("#eef0e2", "#4d5a1c", "❂"),
+    "Religión":                   ("#eae7f0", "#463a63", "✤"),
+    "Esoterismo y espiritualidad alternativa": ("#ede6f2", "#5b2f6e", "☽"),
+    "Historia":                   ("#ece5da", "#6b4a20", "⚑"),
+    "Política, sociedad y economía": ("#e4e8ec", "#2f4458", "⚖"),
+    "Biografías y memorias":      ("#efe7e2", "#5e3b2b", "❦"),
+    "Ciencias y medicina":        ("#e1ecee", "#1d5662", "⚛"),
+    "Salud y vida familiar":      ("#e5efe9", "#2f6247", "♥"),
+    "Arte, música y cine":        ("#f2e6ee", "#6e2f58", "♫"),
+    "Lengua y diccionarios":      ("#e9e9e3", "#3f3f34", "Ⓐ"),
+    "Viajes y guías":             ("#e2ecf2", "#1f5272", "✈"),
+    "Cocina, hogar y ocio":       ("#f4ebdf", "#7a4c1c", "✻"),
 }
 DEFAULT_ESTILO = ("#efe9d9", "#5b5648", "❦")
 
@@ -996,8 +1009,10 @@ def generar_sitio(libros, salida):
     hubo_tapas = any(l.get("tapa_url") for l in libros)
     en_indice = lambda l: indexable(l, exigir_material=hubo_tapas)
 
+    from categorias import CATEGORIAS, SIN_CLASIFICAR, SLUGS_VIEJOS
+    orden = list(CATEGORIAS.values())
     categorias = sorted({l["categoria"] for l in libros},
-                        key=lambda c: (c == "Otros", c))  # Otros al final
+                        key=lambda c: (orden.index(c) if c in orden else len(orden), c))
     autores_idx = _indice_autores(libros)
     autores_orden = sorted(autores_idx.items(), key=lambda kv: (-len(kv[1]["libros"]), kv[0]))
     editoriales_idx = _indice_editoriales(libros)
@@ -1078,6 +1093,20 @@ def generar_sitio(libros, salida):
             open(destino, "w").write(html_pag)
             if i == 1:
                 urls_listas.append((url, "0.8"))
+
+    # Las URLs de la taxonomía anterior redirigen a la categoría que heredó
+    # su contenido principal, para no perder lo que Google ya tenía indexado.
+    slugs_actuales = {_slug_cat(c) for c in categorias}
+    for viejo, nuevo in SLUGS_VIEJOS.items():
+        if viejo in slugs_actuales or nuevo not in slugs_actuales:
+            continue
+        os.makedirs(os.path.join(salida, "categoria", viejo), exist_ok=True)
+        destino_url = f"{DOMINIO}/categoria/{nuevo}/"
+        open(os.path.join(salida, "categoria", viejo, "index.html"), "w").write(
+            f'<!doctype html><html lang="es"><head><meta charset="utf-8">'
+            f'<title>Redirigiendo…</title><link rel="canonical" href="{destino_url}">'
+            f'<meta http-equiv="refresh" content="0;url={destino_url}"></head>'
+            f'<body><p><a href="{destino_url}">Esta categoría cambió de lugar</a>.</p></body></html>')
 
     # --- autores ----------------------------------------------------------
     for nombre, d in autores_orden:
