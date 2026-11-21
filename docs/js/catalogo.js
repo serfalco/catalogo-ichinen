@@ -55,8 +55,9 @@ function continuar(){
 }
 // datos.json (~250 KB comprimido) se baja recién cuando hace falta: al
 // buscar, filtrar o pedir más libros. Quien solo mira la portada no lo baja.
-// Al enfocar el buscador o pasar por un filtro se empieza a bajar, así cuando
-// la persona escribe ya está (o casi).
+// Al enfocar el buscador se empieza a bajar, así cuando la persona escribe ya
+// está (o casi). No se adelanta al pasar el mouse por los filtros: están arriba
+// de todo y cualquier movimiento del mouse lo disparaba.
 let cargando=null;
 function cargar(){
   if(!cargando) cargando=fetch('/datos.json').then(r=>r.json()).then(d=>{LIBROS=d;continuar();})
@@ -73,7 +74,6 @@ const inputQ=document.getElementById('q');
 inputQ.addEventListener('focus',()=>{cargar().catch(()=>{});},{once:true});
 inputQ.addEventListener('input',e=>{ q=e.target.value; cargar().then(aplicar); });
 document.querySelectorAll('.chip').forEach(ch=>{
-  ch.addEventListener('pointerenter',()=>{cargar().catch(()=>{});},{once:true});
   ch.onclick=()=>{
     document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
     ch.classList.add('on'); cat=ch.dataset.cat; cargar().then(aplicar);
