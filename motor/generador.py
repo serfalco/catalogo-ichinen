@@ -1016,24 +1016,32 @@ def generar_sitio(libros, salida):
     open(os.path.join(salida, "css", "catalogo.css"), "w").write(FONT_FACE + CSS)
     open(os.path.join(salida, "js", "catalogo.js"), "w").write(JS.replace("__WA__", WA_NUMERO))
 
+    for l in libros:
+        l["_en_indice"] = en_indice(l)
+    marcar_ejemplares_repetidos(libros)
+    generar_destacados(libros, salida)
+
+    # Orden de la portada (y del buscador, que sigue desde la tarjeta 49): primero
+    # los libros con tapa y autor, después el resto, y las copias de ejemplares
+    # repetidos al final. Dentro de cada grupo se respeta el orden del Excel.
+    # Antes la portada abría con libros sin tapa y "Autor a verificar".
+    libros_portada = sorted(libros, key=lambda l: (not l.get("tapa_url"),
+                                                   not l.get("autor_ok"),
+                                                   bool(l.get("_canon"))))
     datos = [{
         "t": l["titulo"], "a": l["autor"], "ok": l["autor_ok"],
         "ed": l["editorial"], "an": l["anio"], "c": l["categoria"],
         "s": l["slug"], "v": bool([f for f in l["faltantes"] if f != "autor"]),
         "tapa_url": l.get("tapa_url", ""), "cs": _slug_cat(l["categoria"]),
-    } for l in libros]
+    } for l in libros_portada]
     json.dump(datos, open(os.path.join(salida, "datos.json"), "w"),
               ensure_ascii=False, separators=(",", ":"))
 
     n_estante = sum(1 for l in libros if not en_indice(l))
     open(os.path.join(salida, "index.html"), "w").write(
-        generar_index(libros, categorias, autores_orden, n_estante=n_estante,
+        generar_index(libros_portada, categorias, autores_orden, n_estante=n_estante,
                       editoriales_idx=editoriales_idx, decadas=decadas))
 
-    for l in libros:
-        l["_en_indice"] = en_indice(l)
-    marcar_ejemplares_repetidos(libros)
-    generar_destacados(libros, salida)
     for l in libros:
         open(os.path.join(salida, "libro", f'{l["slug"]}.html'), "w").write(
             generar_pagina_libro(l, autores_idx))
