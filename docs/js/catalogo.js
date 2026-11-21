@@ -1,10 +1,19 @@
 
 let LIBROS=[], filtrados=[], mostrados=0, cat="", q="", listo=false;
+const WA="5491159952089";
 const PASO=48, PRERENDER=48;
 const grid=document.getElementById('grid');
 const cont=document.getElementById('contador');
 const masWrap=document.getElementById('mas');
 const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+// El link de WhatsApp se arma acá (antes venía en datos.json y era la mitad
+// del archivo). Mismo texto que wa_link() en generador.py.
+function waLink(l){
+  let m='Hola! Me interesa el libro "'+l.t+'"';
+  if(l.a&&l.a!=='Autor a verificar')m+=' de '+l.a;
+  m+='. ¿Está disponible?';
+  return 'https://wa.me/'+WA+'?text='+encodeURIComponent(m);
+}
 function tarjeta(l){
   const cover=l.tapa_url
     ?`<div class="cover"><div class="tc"></div><img src="${l.tapa_url}" alt="Tapa de ${l.t}" loading="lazy"></div>`
@@ -16,7 +25,7 @@ function tarjeta(l){
     ${cover}<div class="cat">${l.c}</div>${verif}
     <div class="t">${l.t}</div><div class="a">${au}</div>
     <div class="meta">${meta}</div></a>
-    <a class="btn-wa" href="${l.wa}" target="_blank" rel="noopener">Consultar</a></article>`;
+    <a class="btn-wa" href="${waLink(l)}" target="_blank" rel="noopener">Consultar</a></article>`;
 }
 function aplicar(){
   const nq=norm(q);
