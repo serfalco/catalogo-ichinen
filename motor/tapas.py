@@ -13,11 +13,25 @@ Estrategia:
 Las tapas cacheadas se re-verifican contra el título por si quedaron cruces viejos.
 Cobertura parcial esperable (usados argentinos); el resto queda placeholder.
 """
-import os, json, time, re, unicodedata, urllib.request, urllib.error
+import os, json, time, re, hashlib, collections, unicodedata, urllib.request, urllib.error
 import datetime
 
 UA = {"User-Agent": "Mozilla/5.0 (IchinenCatalog; +https://ichinen.com.ar)"}
 TIMEOUT = 12
+
+# --- imágenes basura -----------------------------------------------------------
+# Google Books a veces devuelve el título correcto con una imagen que no es la
+# tapa (un libro de Google Tag Manager, "No image available"). Se frenan por
+# huella: lista fija en motor/tapas_basura.txt + cualquier imagen repetida en
+# REPETIDA_MIN o más ISBN distintos (una tapa real no se repite así).
+REPETIDA_MIN = 3
+_BASURA_PATH = os.path.join(os.path.dirname(__file__), "tapas_basura.txt")
+BASURA = set()
+if os.path.exists(_BASURA_PATH):
+    BASURA = {x.split("#")[0].strip() for x in open(_BASURA_PATH, encoding="utf8")} - {""}
+
+def _md5(data):
+    return hashlib.md5(data).hexdigest()
 
 # --- normalización y comparación de títulos ----------------------------------
 _STOP = {"el","la","los","las","un","una","de","del","y","o","a","en","the","of",
@@ -75,7 +89,7 @@ def _descargar(url, destino):
             url = "https://" + url[len("http://"):]
         r = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=TIMEOUT)
         data = r.read()
-        if len(data) < 1500:
+        if len(data) < 1500 or _md5(data) in BASURA:
             return False
         with open(destino, "wb") as f:
             f.write(data)
@@ -184,6 +198,22 @@ def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15,
         if os.path.exists(f):
             os.remove(f)
 
+    # Barrido de basura en las tapas ya bajadas: huellas conocidas o repetidas.
+    por_huella = collections.defaultdict(list)
+    for nombre in os.listdir(dir_tapas):
+        if nombre.endswith(".jpg"):
+            f = os.path.join(dir_tapas, nombre)
+            por_huella[_md5(open(f, "rb").read())].append(nombre[:-4])
+    basura_borradas = 0
+    for huella, isbns in por_huella.items():
+        if huella in BASURA or len(isbns) >= REPETIDA_MIN:
+            BASURA.add(huella)
+            for i in isbns:
+                os.remove(os.path.join(dir_tapas, f"{i}.jpg"))
+                verificadas.discard(i)
+                fallidos[i] = _hoy()
+                basura_borradas += 1
+
     nuevas, cacheadas, sin_tapa, intentos, descartadas, errores = 0, 0, 0, 0, 0, 0
     for l in libros:
         isbn = l.get("isbn")
@@ -254,4 +284,5 @@ def buscar_tapas(libros, dir_tapas, registro_fallidos, limite=None, pausa=0.15,
               ensure_ascii=False, indent=0)
     json.dump(sorted(verificadas), open(reg_ok_path, "w"))
     return {"nuevas": nuevas, "cacheadas": cacheadas, "sin_tapa": sin_tapa,
-            "intentos": intentos, "descartadas": descartadas, "errores": errores}
+            "intentos": intentos, "descartadas": descartadas + basura_borradas,
+            "errores": errores, "basura": basura_borradas}
