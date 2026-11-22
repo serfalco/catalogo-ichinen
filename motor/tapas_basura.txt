@@ -1,0 +1,6 @@
+# Huellas MD5 de imágenes que Google Books devuelve como "tapa" pero no lo son.
+# Vienen con el título correcto, así que el control por título no las frena.
+# Una por línea. El motor además descarta sola cualquier imagen repetida en 3+ ISBN.
+c9b284f6a2454ba9d285a45f25df2ca9  # "Google Tag Manager" (180x231) — aparecía en 11 libros
+456d736c175d97a80c93f4ab500cc29c  # "Google Tag Manager" (otra versión) — 3 libros
+681e43bb536038b0ecb97ed0c13b5948  # "No image available" de Google — 6 libros
